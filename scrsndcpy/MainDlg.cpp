@@ -93,6 +93,10 @@ LRESULT CMainDlg::OnAppAbout(WORD, WORD, HWND, BOOL&)
 			sock.SetBlocking(true);
 			auto buffer = std::make_unique<char[]>(bufferSize);
 
+			for (int i = 0; i < 20; ++i) {
+				int recvSize = sock.Read(buffer.get(), bufferSize);
+			}
+
 			bool bFirst = true;
 			for (;;) {
 				//char buffer[1024];

@@ -75,7 +75,7 @@ BOOST_LOG_GLOBAL_LOGGER_INIT(my_logger, logger_t)
 	sink_text->imbue(std::locale(std::locale(), new std::codecvt_utf8_utf16<wchar_t>));
 	core->add_sink(sink_text);
 
-#ifdef _DEBUG || SHOW_CONSOLE
+#ifdef SHOW_CONSOLE//_DEBUG
 	// ログのコンソール出力を設定
 	//setlocale(LC_ALL, "");
 

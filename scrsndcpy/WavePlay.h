@@ -40,15 +40,19 @@ private:
 	std::vector<BYTE> m_buffer[2];
 	WAVEHDR	m_wh[2];
 #endif
-	CComPtr<IAudioClient3> spAudioClient;
-	CComPtr<IAudioRenderClient> spRenderClient;
+	CComPtr<IAudioClient3> m_spAudioClient;
+	CComPtr<IAudioRenderClient> m_spRenderClient;
+	CComPtr<IAudioClock> m_spAudioClock;
+
+	WAVEFORMATEXTENSIBLE m_waveformat = {};
+
+	UINT64	m_device_frequency;
 
 	int		m_frameSize;
 	std::vector<BYTE> m_buffer;
 	std::chrono::steady_clock::time_point	m_bufferTimestamp;
 	LONGLONG	m_playTime_ns;
 
-	WAVEFORMATEXTENSIBLE format_ = {};
 	UINT64	last_qpc_position_ = 0;
 
 	uint64_t m_last_played_out_frames = 0;
