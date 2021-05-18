@@ -5,6 +5,7 @@
 
 #include "MainDlg.h"
 #include "Utility\CommonUtility.h"
+#include "Utility\GdiplusUtil.h"
 #include "Socket.h"
 
 CAppModule _Module;
@@ -48,9 +49,11 @@ int WINAPI _tWinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPTSTR lp
 	ATLASSERT(SUCCEEDED(hRes));
 
 	CSocket::Init();
+	GdiplusInit();
 
 	int nRet = Run(lpstrCmdLine, nCmdShow);
 
+	GdiplusTerm();
 	CSocket::Term();
 
 	_Module.Term();

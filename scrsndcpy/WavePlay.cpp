@@ -1,10 +1,11 @@
 ﻿#include "stdafx.h"
 #include "WavePlay.h"
-#pragma comment(lib, "Winmm.lib")
 
+#include <avrt.h>
+
+#include "MainDlg.h"
 #include "Utility\CodeConvert.h"
-
-
+#include "Socket.h"
 
 #pragma comment(lib, "Avrt.lib")
 
@@ -29,8 +30,13 @@ WavePlay::~WavePlay()
 #define DEBUG
 #endif
 
-bool WavePlay::Init(int buffer_ms)
+bool WavePlay::Init(int bufferMultiple, int playTimeRealTimeThreshold_ms)
 {
+	ATLASSERT(1 <= bufferMultiple && bufferMultiple <= 10);
+	ATLASSERT(10 <= playTimeRealTimeThreshold_ms && playTimeRealTimeThreshold_ms <= 100);
+
+	m_playTimeRealTimeThreshold_ms = playTimeRealTimeThreshold_ms;
+
 	try {
 		HRESULT hr = S_FALSE;
 		CComPtr<IMMDeviceEnumerator> spDeviceEnumrator;
@@ -128,7 +134,7 @@ bool WavePlay::Init(int buffer_ms)
 		//}
 
 		hr = m_spAudioClient->InitializeSharedAudioStream(
-			0,
+			AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
 			defaultPeriodInFrames,
 			&wf.Format,
 			nullptr); // audio session GUID
@@ -161,8 +167,10 @@ bool WavePlay::Init(int buffer_ms)
 		}
 
 		const UINT32 bufferSize = frame * iFrameSize;
-		//m_bufferBytes = bufferSize / 2;	// とりあえず最大バッファサイズを要求する
-		m_bufferBytes = bufferSize;	// とりあえず最大バッファサイズを要求する
+		m_bufferBytes = bufferSize / 2;	// とりあえず最大バッファの半分のサイズを要求する
+		//m_bufferBytes = bufferSize;	// とりあえず最大バッファサイズを要求する
+		m_bufferBytes *= bufferMultiple;
+		INFO_LOG << L"bufferSize: " << m_bufferBytes;
 
 		// バッファに溜まっていたデータを初期化しておく
 		LPBYTE pData = nullptr;
@@ -176,6 +184,20 @@ bool WavePlay::Init(int buffer_ms)
 		REFERENCE_TIME nsLatency = 0;
 		hr = m_spAudioClient->GetStreamLatency(&nsLatency);
 		INFO_LOG << L"GetStreamLatency: " << nsLatency << L"ns";
+
+		// イベントオブジェクトを設定
+		m_eventBufferReady.Create(NULL, FALSE, FALSE, NULL);
+		hr = m_spAudioClient->SetEventHandle(m_eventBufferReady);
+		ATLASSERT(SUCCEEDED(hr));
+
+		// SimpleAudioVolume取得
+		hr = m_spAudioClient->GetService(__uuidof(ISimpleAudioVolume), (void**)&m_spSimpleAudioVolume);
+		ATLASSERT(SUCCEEDED(hr));
+
+		// 優先度を Audio に設定
+		DWORD taskIndex = 0;
+		m_hTask = ::AvSetMmThreadCharacteristics(TEXT("Audio"), &taskIndex);
+		ATLASSERT(m_hTask);
 
 		// 再生開始
 		hr = m_spAudioClient->Start();
@@ -201,17 +223,45 @@ void WavePlay::Term()
 	m_exit = true;
 	lock.unlock();
 
-	m_threadBufferConsume.join();
+	// 優先度を元に戻す
+	if (m_hTask != NULL) {
+		::AvRevertMmThreadCharacteristics(m_hTask);
+		m_hTask = NULL;
+	}
+	if (m_spAudioClient) {
+		m_spSimpleAudioVolume.Release();
+		m_spAudioClock.Release();
+		m_spRenderClient.Release();
+
+		HRESULT hr = S_FALSE;
+		hr = m_spAudioClient->Stop();
+		m_spAudioClient.Release();
+	}
+
+	//m_threadBufferConsume.join();
 }
 
 void WavePlay::WriteBuffer(const BYTE* buffer, int bufferSize)
 {
-	std::unique_lock<std::mutex> lock(m_mtx);
-	m_buffer.insert(m_buffer.begin() + m_buffer.size(), buffer, buffer + bufferSize);
+	//std::unique_lock<std::mutex> lock(m_mtx);
+	m_buffer.append((const char*)buffer, bufferSize);
+	//m_buffer.insert(m_buffer.begin() + m_buffer.size(), buffer, buffer + bufferSize);
 	//m_bufferTimestamp = std::chrono::steady_clock::now();
 	//m_cond.notify_one();
 
 	_BufferConsume();
+}
+
+void WavePlay::SetVolume(int volume)
+{
+	ATLASSERT(0 <= volume && volume <= 100);
+	float fLevel = volume / 100.0f;
+	if (fLevel < 0.0) {
+		fLevel = 0;
+	} else if (1.0 < fLevel) {
+		fLevel = 1.0;
+	}
+	HRESULT hr = m_spSimpleAudioVolume->SetMasterVolume(fLevel, nullptr);
 }
 
 void WavePlay::_BufferConsume()
@@ -222,45 +272,9 @@ void WavePlay::_BufferConsume()
 	//	if (m_exit) {
 	//		break;
 	//	}
-		HRESULT hr = S_FALSE;
 
-		UINT64 position = 0;
-		hr = m_spAudioClock->GetPosition(&position, nullptr);
-		const uint64_t played_out_frames = m_waveformat.Format.nSamplesPerSec * position / m_device_frequency;
-		auto currentTimestamp = std::chrono::steady_clock::now();
-
-		if (m_last_played_out_frames != 0) {
-			// 再生時間の差分を取得
-			const uint64_t diffFrames = played_out_frames - m_last_played_out_frames;
-			const uint64_t playDuration_ns = diffFrames * 1000000000 / m_waveformat.Format.nSamplesPerSec;
-
-			// リアル時間の差分を取得
-			auto diffTime_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(currentTimestamp - m_bufferTimestamp).count();
-
-			//WARN_LOG //<< L"_BufferConsume: buffer.size() == " << buffer.size() 
-			//	<< L" diffTime: " << diffTime_ns 
-			//	<< L" playDuration_ns: "<< playDuration_ns;
-
-			m_diffPlaytimeRealTime += diffTime_ns - playDuration_ns;
-			//INFO_LOG << L"m_diffPlaytimeRealTime: " << m_diffPlaytimeRealTime;
-
-			bool sampleDrop = false;
-			if (m_diffPlaytimeRealTime > 50 * 1000000) {
-				if (diffFrames == 0) {
-					m_diffPlaytimeRealTime = 0;
-					WARN_LOG << L"m_diffPlaytimeRealTime = 0;";
-				} else {
-					sampleDrop = true;
-					WARN_LOG << L"sample drop diff:" << m_diffPlaytimeRealTime;
-					m_buffer.clear();
-					m_last_played_out_frames = 0;
-				}
-			}
-		}
-		m_last_played_out_frames = played_out_frames;
-		m_bufferTimestamp = currentTimestamp;
-
-		std::vector<BYTE> buffer = std::move(m_buffer);
+		std::string buffer;
+		buffer.swap(m_buffer);
 		//auto bufferTimestamp = m_bufferTimestamp;
 		//lock.unlock();
 
@@ -271,28 +285,121 @@ void WavePlay::_BufferConsume()
 		//}
 
 		//HRESULT hr = S_OK;
+		HRESULT hr = S_FALSE;
+
 		UINT32 bufferFrameCount = 0;
 		hr = m_spAudioClient->GetBufferSize(&bufferFrameCount);
 		int count = 0;
-		BYTE*	bufferBegin = buffer.data();
+		const char*	bufferBegin = buffer.data();
 		size_t	restBufferSize = buffer.size();
 		while (restBufferSize) {
 			UINT32	numFramesAvailable = 0;
 			UINT32  availableBufferSize = 0;
+
+			//auto timebegin = std::chrono::steady_clock::now();
 			for (;;) {
+				// Wait for next buffer event to be signaled.
+				DWORD retval = ::WaitForSingleObject(m_eventBufferReady, 2000);
+				if (retval != WAIT_OBJECT_0) {
+					// Event handle timed out after a 2-second wait.
+					ERROR_LOG << L"WaitForSingleObject timeout";
+					ATLASSERT(FALSE);
+					return;
+				}
+
 				// See how much buffer space is available.
 				UINT32 numFramesPadding = 0;
 				hr = m_spAudioClient->GetCurrentPadding(&numFramesPadding);
+				//ATLASSERT(SUCCEEDED(hr));
 				numFramesAvailable = bufferFrameCount - numFramesPadding;	// 空いてるフレーム数
 				availableBufferSize = m_frameSize * numFramesAvailable;		// 利用可能なバッファサイズ
+
+				{
+
+					UINT64 position = 0;
+					hr = m_spAudioClock->GetPosition(&position, nullptr);
+					const uint64_t played_out_frames = m_waveformat.Format.nSamplesPerSec * position / m_device_frequency;
+
+					auto currentTimestamp = std::chrono::steady_clock::now();
+					// リアル時間の差分を取得
+					auto diffTime_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(currentTimestamp - m_bufferTimestamp).count();
+					m_bufferTimestamp = currentTimestamp;
+
+					if (m_last_played_out_frames != 0) {
+						// 再生時間の差分を取得
+						const uint64_t diffFrames = played_out_frames - m_last_played_out_frames;
+						const uint64_t playDuration_ns = diffFrames * 1000000000 / m_waveformat.Format.nSamplesPerSec;
+
+						//WARN_LOG //<< L"_BufferConsume: buffer.size() == " << buffer.size() 
+						//	<< L" diffTime: " << diffTime_ns 
+						//	<< L" playDuration_ns: "<< playDuration_ns;
+
+						m_diffPlaytimeRealTime += diffTime_ns - playDuration_ns;
+						//INFO_LOG << L"m_diffPlaytimeRealTime: " << m_diffPlaytimeRealTime;
+
+						bool sampleDrop = false;
+						if (std::abs(m_diffPlaytimeRealTime) > m_playTimeRealTimeThreshold_ms * 1000000LL) {
+							if (diffFrames == 0) {	// 前回再生されなかったのでリセットしておく
+								m_diffPlaytimeRealTime = 0;
+								//WARN_LOG << L"m_diffPlaytimeRealTime = 0;";
+							} else {
+								sampleDrop = true;
+								WARN_LOG << L"sample drop diff:" << m_diffPlaytimeRealTime;
+
+								// メインダイアログに通知する
+								std::thread([](int64_t diffPlaytimeRealTime, uint64_t playDuration_ns, uint64_t realDiffTime_ns) {	
+									PUTLOG(L"sample drop\r\ndiffPlaytimeRealTime: %ld", //\r\nplayDuration_ns\t: %ld\r\nrealDiffTime_ns\t: %ld", 
+										diffPlaytimeRealTime);// , playDuration_ns, realDiffTime_ns);
+								}, m_diffPlaytimeRealTime, playDuration_ns, static_cast<uint64_t>(diffTime_ns)).detach();
+								//m_buffer.clear();	// 関数開始時に空にされるので要らない
+								m_last_played_out_frames = 0;
+								m_diffPlaytimeRealTime = 0;
+
+								// ソケット内のバッファが空になるまで読みだす
+								m_pSock->SetBlocking(false);
+								//buffer.clear();
+								auto tempbuffer = std::make_unique<char[]>(m_bufferBytes);
+								int totalRecvSize = 0;
+								for (;;) {
+									int recvSize = m_pSock->Read(tempbuffer.get(), m_bufferBytes);
+									ATLASSERT(recvSize != -1);
+									if (recvSize == -1) {
+										ERROR_LOG << L"SocketError : -1";										
+										return;
+									}
+									buffer.append(tempbuffer.get(), recvSize);
+
+									totalRecvSize += recvSize;
+									if (recvSize == 0) {
+										break;
+									}
+								}
+								
+								// bufferの後ろから availableBufferSize 分利用する
+								restBufferSize = min(buffer.size(), availableBufferSize);
+								bufferBegin = buffer.data() + (totalRecvSize - restBufferSize);
+								INFO_LOG << L"totalRecvSize: " << totalRecvSize << L" availableBufferSize: " << availableBufferSize << L" restBufferSize: " << restBufferSize;
+
+								m_pSock->SetBlocking(true);
+								break;	// バッファが用意できたので処理を回す
+							}
+						}
+					}
+					m_last_played_out_frames = played_out_frames;
+				}
 
 				if (availableBufferSize) {
 					break;	// バッファが空いた
 
 				} else {
+					//ATLASSERT(FALSE);	// 今の実装だとここには来ない・・・はずだったが来る
+					WARN_LOG << L"availableBufferSize == 0";
 					::Sleep(0);	// バッファが空くまで待つ
 				}
 			}
+			//auto sleeptime = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - timebegin).count();
+			//INFO_LOG << L"sleeptime: " << sleeptime << L"ns";
+
 			UINT32 bufferSize = min(availableBufferSize, static_cast<UINT32>(restBufferSize));
 
 			//if (!sampleDrop) {

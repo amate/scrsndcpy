@@ -352,6 +352,17 @@ bool	CSocket::Connect(IPAddress addr, std::atomic_bool& valid)
 		}
 
 		SetBlocking(false);
+		{	// 受信バッファを増やす
+			int defaultBuffSize = 0;
+			int optLen = sizeof(int);
+			int ret1 = ::getsockopt(m_sock, SOL_SOCKET, SO_RCVBUF, (char*)&defaultBuffSize, &optLen);
+
+			int buffSize = 512 * 1024; //512kb
+			int ret = ::setsockopt(m_sock, SOL_SOCKET, SO_RCVBUF, (const char*)&buffSize, sizeof(int));
+			if (ret != 0) {
+				ATLASSERT(FALSE);// TRACE(_T("割り当て失敗"));
+			}
+		}
 		int ret = ::connect(m_sock, ai->ai_addr, ai->ai_addrlen);
 		int error = ::WSAGetLastError();
 		if (ret == SOCKET_ERROR && error == WSAEWOULDBLOCK) {
