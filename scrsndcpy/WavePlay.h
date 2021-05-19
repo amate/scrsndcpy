@@ -15,8 +15,6 @@
 
 #include <atlsync.h>
 
-class CSocket;
-
 
 class WavePlay
 {
@@ -24,7 +22,11 @@ public:
 	WavePlay();
 	~WavePlay();
 
-	bool	Init(int bufferMultiple, int playTimeRealTimeThreshold_ms);
+	void	SetMainDlgHWND(HWND hWnd) {
+		m_hWndMainDlg = hWnd;
+	}
+
+	bool	Init(int bufferMultiple, int maxBufferSampleCount);
 	void	Term();
 
 	int		GetBufferBytes() const {
@@ -35,18 +37,13 @@ public:
 
 	void	SetVolume(int volume);
 
-	CSocket* m_pSock = nullptr;
 private:
-
 	void	_BufferConsume();
-#if 0
 
-	HWAVEOUT m_hWaveOut = NULL;
+	enum {
+		kForceBufferClearSampleCount = 10000,
+	};
 
-	int		m_bufferIndex = 0;
-	std::vector<BYTE> m_buffer[2];
-	WAVEHDR	m_wh[2];
-#endif
 	CComPtr<IAudioClient3> m_spAudioClient;
 	CComPtr<IAudioRenderClient> m_spRenderClient;
 	CComPtr<IAudioClock> m_spAudioClock;
@@ -56,26 +53,15 @@ private:
 	
 	WAVEFORMATEXTENSIBLE m_waveformat = {};
 
-	UINT64	m_device_frequency;
-
-	int		m_frameSize;
-	std::string m_buffer;
-	std::chrono::steady_clock::time_point	m_bufferTimestamp;
-	LONGLONG	m_playTime_ns;
-
-	UINT64	last_qpc_position_ = 0;
-
-	uint64_t m_last_played_out_frames = 0;
-
-	int64_t	m_diffPlaytimeRealTime = 0;
-
 	int		m_bufferBytes;
-	int		m_playTimeRealTimeThreshold_ms;
-
-	std::mutex m_mtx;
-	std::condition_variable	m_cond;
+	int		m_maxBufferSampleCount;
+	int		m_frameSize;
+	CCriticalSection m_cs;
+	std::string m_buffer;
 
 	std::thread	m_threadBufferConsume;
 	bool		m_exit = false;
+
+	HWND	m_hWndMainDlg = NULL;
 };
 

@@ -35,6 +35,8 @@ public:
 
 	enum {
 		kMaxVolume = 100,
+
+		WM_WAVEPlAY_INFO = WM_APP + 1,
 	};
 
 	virtual BOOL PreTranslateMessage(MSG* pMsg)
@@ -56,6 +58,7 @@ public:
 
 	BEGIN_DDX_MAP(CMainDlg)
 		DDX_CONTROL_HANDLE(IDC_EDIT_LOG, m_editLog)
+		DDX_CONTROL_HANDLE(IDC_EDIT_WAVEPLAYINFO, m_wavePlayInfo)
 		DDX_CONTROL_HANDLE(IDC_COMBO_DEVICES, m_cmbDevices)
 		DDX_CONTROL_HANDLE(IDC_CHECK_SCREENSOUNDCOPY, m_checkSSC)
 		DDX_CONTROL_HANDLE(IDC_SLIDER_VOLUME , m_sliderVolume)
@@ -67,6 +70,7 @@ public:
 		COMMAND_ID_HANDLER(ID_APP_ABOUT, OnAppAbout)
 		COMMAND_ID_HANDLER(IDC_CHECK_SCREENSOUNDCOPY, OnScreenSoundCopy)
 		COMMAND_ID_HANDLER(IDCANCEL, OnCancel)
+		MESSAGE_HANDLER_EX(WM_WAVEPlAY_INFO, OnWavePlayInfo)
 
 		COMMAND_ID_HANDLER_EX(IDC_BUTTON_TOGGLE_MUTE, OnToggleMute)
 		COMMAND_ID_HANDLER_EX(IDC_BUTTON_MANUAL_SNDCPY, OnManualSndcpy)
@@ -80,14 +84,11 @@ public:
 //	LRESULT NotifyHandler(int /*idCtrl*/, LPNMHDR /*pnmh*/, BOOL& /*bHandled*/)
 
 	LRESULT OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
-
 	LRESULT OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
-
 	LRESULT OnAppAbout(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
-
 	LRESULT OnScreenSoundCopy(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
-
 	LRESULT OnCancel(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnWavePlayInfo(UINT uMsg, WPARAM wParam, LPARAM lParam);
 
 	void	OnToggleMute(UINT uNotifyCode, int nID, CWindow wndCtl);
 	void	OnManualSndcpy(UINT uNotifyCode, int nID, CWindow wndCtl);
@@ -127,4 +128,6 @@ private:
 	Config	m_config;
 	nlohmann::json	m_jsonCommon;
 	CPoint	m_scrcpyWidowPos;
+
+	CEdit	m_wavePlayInfo;
 };

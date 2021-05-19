@@ -40,8 +40,8 @@ bool Config::LoadConfig()
 
 	// sndcpy
 	bufferMultiple = jsonSetting["Config"].value("BufferMultiple", bufferMultiple);
-	playTimeRealTimeThreshold_ms = 
-		jsonSetting["Config"].value("PlayTimeRealTimeThreshold_ms", playTimeRealTimeThreshold_ms);
+	maxBufferSampleCount = 
+		jsonSetting["Config"].value("MaxBufferSampleCount", maxBufferSampleCount);
 	deviceMuteOnStart = jsonSetting["Config"].value("DeviceMuteOnStart", deviceMuteOnStart);
 
     return true;
@@ -70,7 +70,7 @@ void Config::SaveConfig()
 	jsonSetting["Config"]["TurnScreenOff"] = turnScreenOff;
 
 	jsonSetting["Config"]["BufferMultiple"] = bufferMultiple;
-	jsonSetting["Config"]["PlayTimeRealTimeThreshold_ms"] = playTimeRealTimeThreshold_ms;
+	jsonSetting["Config"]["MaxBufferSampleCount"] = maxBufferSampleCount;
 	jsonSetting["Config"]["DeviceMuteOnStart"] = deviceMuteOnStart;
 
 	std::ofstream ofs((GetExeDirectory() / "setting.json").wstring());

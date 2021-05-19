@@ -5,7 +5,6 @@
 
 #include "MainDlg.h"
 #include "Utility\CodeConvert.h"
-#include "Socket.h"
 
 #pragma comment(lib, "Avrt.lib")
 
@@ -30,12 +29,11 @@ WavePlay::~WavePlay()
 #define DEBUG
 #endif
 
-bool WavePlay::Init(int bufferMultiple, int playTimeRealTimeThreshold_ms)
+bool WavePlay::Init(int bufferMultiple, int maxBufferSampleCount)
 {
 	ATLASSERT(1 <= bufferMultiple && bufferMultiple <= 10);
-	ATLASSERT(10 <= playTimeRealTimeThreshold_ms && playTimeRealTimeThreshold_ms <= 100);
-
-	m_playTimeRealTimeThreshold_ms = playTimeRealTimeThreshold_ms;
+	ATLASSERT(0 <= maxBufferSampleCount && bufferMultiple <= 48000);
+	m_maxBufferSampleCount = maxBufferSampleCount;
 
 	try {
 		HRESULT hr = S_FALSE;
@@ -154,10 +152,10 @@ bool WavePlay::Init(int bufferMultiple, int playTimeRealTimeThreshold_ms)
 			throw std::runtime_error("m_spAudioClient->GetService(__uuidof(IAudioClock) failed");
 		}
 
-		hr = m_spAudioClock->GetFrequency(&m_device_frequency);
-		if (FAILED(hr)) {
-			throw std::runtime_error("m_spAudioClock->GetFrequency failed");
-		}
+		//hr = m_spAudioClock->GetFrequency(&m_device_frequency);
+		//if (FAILED(hr)) {
+		//	throw std::runtime_error("m_spAudioClock->GetFrequency failed");
+		//}
 
 		// WASAPI情報取得
 		UINT32 frame = 0;
@@ -194,10 +192,10 @@ bool WavePlay::Init(int bufferMultiple, int playTimeRealTimeThreshold_ms)
 		hr = m_spAudioClient->GetService(__uuidof(ISimpleAudioVolume), (void**)&m_spSimpleAudioVolume);
 		ATLASSERT(SUCCEEDED(hr));
 
-		// 優先度を Audio に設定
-		DWORD taskIndex = 0;
-		m_hTask = ::AvSetMmThreadCharacteristics(TEXT("Audio"), &taskIndex);
-		ATLASSERT(m_hTask);
+		//// 優先度を Audio に設定
+		//DWORD taskIndex = 0;
+		//m_hTask = ::AvSetMmThreadCharacteristics(TEXT("Audio"), &taskIndex);
+		//ATLASSERT(m_hTask);
 
 		// 再生開始
 		hr = m_spAudioClient->Start();
@@ -205,9 +203,20 @@ bool WavePlay::Init(int bufferMultiple, int playTimeRealTimeThreshold_ms)
 			throw std::runtime_error("m_spAudioClient->Start() failed");
 		}
 
-		//m_threadBufferConsume = std::thread([this]() {
-		//	_BufferConsume();
-		//});
+		m_threadBufferConsume = std::thread([this]() {
+			// 優先度を Audio に設定
+			DWORD taskIndex = 0;
+			m_hTask = ::AvSetMmThreadCharacteristics(TEXT("Audio"), &taskIndex);
+			ATLASSERT(m_hTask);
+
+			_BufferConsume();
+
+			// 優先度を元に戻す
+			if (m_hTask != NULL) {
+				::AvRevertMmThreadCharacteristics(m_hTask);
+				m_hTask = NULL;
+			}
+		});
 	} catch (std::exception& e) {
 		ERROR_LOG << L"WavePlay::Init failed: " << UTF16fromUTF8(e.what());
 		ATLASSERT(FALSE);
@@ -219,15 +228,15 @@ bool WavePlay::Init(int bufferMultiple, int playTimeRealTimeThreshold_ms)
 
 void WavePlay::Term()
 {
-	std::unique_lock<std::mutex> lock(m_mtx);
+	//std::unique_lock<std::mutex> lock(m_mtx);
 	m_exit = true;
-	lock.unlock();
+	//lock.unlock();
 
-	// 優先度を元に戻す
-	if (m_hTask != NULL) {
-		::AvRevertMmThreadCharacteristics(m_hTask);
-		m_hTask = NULL;
-	}
+	//// 優先度を元に戻す
+	//if (m_hTask != NULL) {
+	//	::AvRevertMmThreadCharacteristics(m_hTask);
+	//	m_hTask = NULL;
+	//}
 	if (m_spAudioClient) {
 		m_spSimpleAudioVolume.Release();
 		m_spAudioClock.Release();
@@ -236,20 +245,22 @@ void WavePlay::Term()
 		HRESULT hr = S_FALSE;
 		hr = m_spAudioClient->Stop();
 		m_spAudioClient.Release();
-	}
 
-	//m_threadBufferConsume.join();
+		m_threadBufferConsume.join();
+	}
 }
+
 
 void WavePlay::WriteBuffer(const BYTE* buffer, int bufferSize)
 {
 	//std::unique_lock<std::mutex> lock(m_mtx);
+	CCritSecLock lock(m_cs);
 	m_buffer.append((const char*)buffer, bufferSize);
 	//m_buffer.insert(m_buffer.begin() + m_buffer.size(), buffer, buffer + bufferSize);
 	//m_bufferTimestamp = std::chrono::steady_clock::now();
 	//m_cond.notify_one();
 
-	_BufferConsume();
+	//_BufferConsume();
 }
 
 void WavePlay::SetVolume(int volume)
@@ -266,17 +277,136 @@ void WavePlay::SetVolume(int volume)
 
 void WavePlay::_BufferConsume()
 {
-	//for (;;) {
-	//	std::unique_lock<std::mutex> lock(m_mtx);
-	//	m_cond.wait(lock, [this]() { return m_buffer.size() > 0 || m_exit; });
-	//	if (m_exit) {
-	//		break;
-	//	}
+	HRESULT hr = S_FALSE;
+
+	UINT32 bufferFrameCount = 0;
+	hr = m_spAudioClient->GetBufferSize(&bufferFrameCount);
+	ATLASSERT(SUCCEEDED(hr));
+
+	if (m_maxBufferSampleCount < bufferFrameCount) {
+		m_maxBufferSampleCount = bufferFrameCount;
+	}
+
+	int i = 0;
+	int minSample = INT_MAX;
+	int maxSample = 0;
+	int adjustBufferCount = 0;
+	int playSample = 0;
+	for (;!m_exit;) {
+		UINT32	numFramesAvailable = 0;
+		UINT32  availableBufferSize = 0;
+
+		for (;;) {
+			// Renader バッファが空くのを待つ
+			// Wait for next buffer event to be signaled.
+			DWORD retval = ::WaitForSingleObject(m_eventBufferReady, 2000);
+			if (retval != WAIT_OBJECT_0) {
+				if (m_exit) {
+					return ;	// cancel
+				}
+				// Event handle timed out after a 2-second wait.
+				ERROR_LOG << L"WaitForSingleObject timeout";
+				ATLASSERT(FALSE);
+				return;
+			}
+			// See how much buffer space is available.
+			UINT32 numFramesPadding = 0;
+			hr = m_spAudioClient->GetCurrentPadding(&numFramesPadding);
+			//ATLASSERT(SUCCEEDED(hr));
+			numFramesAvailable = bufferFrameCount - numFramesPadding;	// 空いてるフレーム数
+			availableBufferSize = m_frameSize * numFramesAvailable;		// 利用可能なバッファサイズ
+
+			if (availableBufferSize) {
+				break;	// バッファが空いた
+
+			} else {
+				//ATLASSERT(FALSE);	// 今の実装だとここには来ない・・・はずだったが来る
+				WARN_LOG << L"availableBufferSize == 0";
+				::Sleep(0);	// バッファが空くまで待つ
+			}
+		}
+
+		size_t bufferSampleCount = 0;
+		{	// Render バッファに書き込む
+			//std::unique_lock<std::mutex> lock(m_mtx);
+			CCritSecLock lock(m_cs);
+
+			const char* bufferBegin = m_buffer.data();
+			size_t		restBufferSize = m_buffer.size();
+
+			UINT32 bufferSize = min(availableBufferSize, static_cast<UINT32>(restBufferSize));
+
+			UINT32 bufferFrameSize = bufferSize / m_frameSize;
+			// Grab all the available space in the shared buffer.
+			BYTE* pData = nullptr;
+			hr = m_spRenderClient->GetBuffer(bufferFrameSize, &pData);
+			ATLASSERT(SUCCEEDED(hr));
+
+			::memcpy_s(pData, availableBufferSize, bufferBegin, bufferSize);
+			hr = m_spRenderClient->ReleaseBuffer(bufferFrameSize, 0);
+			ATLASSERT(SUCCEEDED(hr));
+
+			playSample += bufferFrameSize;
+
+			{
+				if (::GetAsyncKeyState(VK_CONTROL) < 0 && ::GetAsyncKeyState(VK_MENU) < 0) {
+					m_buffer.clear();
+				}
+				bufferSampleCount = (restBufferSize - bufferSize) / m_frameSize;
+
+				minSample = min(minSample, bufferSampleCount);
+				maxSample = max(maxSample, bufferSampleCount);
+
+				// バッファ調整
+				const int kMaxBufferSample = m_maxBufferSampleCount;//bufferFrameCount * 2;
+				if (kForceBufferClearSampleCount < maxSample) {
+					WARN_LOG << L"m_buffer.clear() - kForceBufferClearSampleCount < maxSample";
+					m_buffer.clear();
+
+				} else if (kMaxBufferSample < maxSample) {
+					bufferSize += m_frameSize * 1;	// 1 sample分余計に削除する
+					//INFO_LOG << L"buff erase, maxSample:" << maxSample;
+					++adjustBufferCount;
+					--maxSample;
+				}
+			}
+
+			// 書き込んだ分削除する
+			m_buffer.erase(0, bufferSize);
+		}
+		++i;
+
+		using namespace std::chrono;
+		static auto prevTime = steady_clock::now();
+		auto nowTime = steady_clock::now();
+		auto elapsed = duration_cast<milliseconds>(nowTime - prevTime).count();
+		if (elapsed >= 1000) {
+#ifdef _DEBUG
+			INFO_LOG << L"bufferSampleCount: " << bufferSampleCount << L" \ti: " << i  << L" playSample: " << playSample
+					<< L" min: " << minSample << L" \tmax: " << maxSample << L" \tadjustBufferCount: " << adjustBufferCount;
+#endif
+			::PostMessage(m_hWndMainDlg, CMainDlg::WM_WAVEPlAY_INFO, MAKELONG(playSample, adjustBufferCount), MAKELONG(minSample, maxSample));
+
+			prevTime = nowTime;
+			i = 0;
+			minSample = INT_MAX;
+			maxSample = 0;
+			adjustBufferCount = 0;
+			playSample = 0;
+		}
+	}
+#if 0
+	for (;;) {
+		std::unique_lock<std::mutex> lock(m_mtx);
+		m_cond.wait(lock, [this]() { return m_buffer.size() > 0 || m_exit; });
+		if (m_exit) {
+			break;
+		}
 
 		std::string buffer;
 		buffer.swap(m_buffer);
 		//auto bufferTimestamp = m_bufferTimestamp;
-		//lock.unlock();
+		lock.unlock();
 
 
 		//if (diffTime_ms >= 25) {
@@ -422,6 +552,7 @@ void WavePlay::_BufferConsume()
 		}
 		//INFO_LOG << L"_BufferConsume: count == " << count;
 
-	//}
+	}
+#endif
 }
 

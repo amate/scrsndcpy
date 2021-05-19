@@ -25,8 +25,7 @@ public:
 		DDX_CHECK(IDC_CHECK_TURN_SCREEN_OFF, m_tempConfig.turnScreenOff)
 
 		DDX_INT_RANGE(IDC_EDIT_BUFFER_MULTIPLE, m_tempConfig.bufferMultiple, 1, 10)
-		DDX_INT_RANGE(IDC_EDIT_PLAYTIME_REALTIME_THRESHOLD_MS, 
-								m_tempConfig.playTimeRealTimeThreshold_ms, 10, 100)		
+		DDX_INT_RANGE(IDC_EDIT_MAXBUFFERSAMPLECOUNT,m_tempConfig.maxBufferSampleCount, 0, 48000)		
 		DDX_CHECK(IDC_CHECK_DEVICE_MUTE_ON_START, m_tempConfig.deviceMuteOnStart)
 	END_DDX_MAP()
 

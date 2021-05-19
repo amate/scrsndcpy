@@ -26,7 +26,7 @@ LRESULT ConfigDlg::OnInitDialog(UINT, WPARAM, LPARAM, BOOL&)
 LRESULT ConfigDlg::OnOK(WORD, WORD wID, HWND, BOOL&)
 {
 	if (!DoDataExchange(DDX_SAVE)) {
-		MessageBox(L"数値を範囲内に収めてください");
+		MessageBox(L"���l��͈͓��Ɏ��߂Ă�������");
 		return 0;
 	}
 

@@ -217,6 +217,20 @@ LRESULT CMainDlg::OnCancel(WORD, WORD wID, HWND, BOOL&)
 	return 0;
 }
 
+LRESULT CMainDlg::OnWavePlayInfo(UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+	int playSample = LOWORD(wParam);
+	int minSample = LOWORD(lParam);
+	int maxSample = HIWORD(lParam);
+	int dropSample = HIWORD(wParam);
+
+	CString title;
+	title.Format(L"PlaySample: %d min: %d max %d dropSample: %d", playSample, minSample, maxSample, dropSample);
+	m_wavePlayInfo.SetWindowText(title);
+
+	return LRESULT();
+}
+
 
 LRESULT CMainDlg::OnDestroy(UINT, WPARAM, LPARAM, BOOL&)
 {
@@ -479,6 +493,26 @@ void CMainDlg::_SndcpyAutoPermission(const std::wstring& deviceSerial, bool bMan
 				::Sleep(500);	// ダイアログが出てくるまで待つ
 				PUTLOG(L"sndcpyダイアログ確認中...");
 
+				const std::string searchText = m_jsonCommon["Common"]["Sndcpy"]["AuthorizationGrep"];
+				enum { kMaxRetryCount = 10 };
+				for (int i = 0; i < kMaxRetryCount; ++i) {
+					std::string adbRet = _SendADBCommand(_GetAdbCommand("IsSndcpyAuthorization"));
+					if (adbRet.find(searchText) != std::string::npos) {
+						PUTLOG(L"認証ダイアログ発見、自動認証します");
+						_SendADBCommand(L"shell input keyevent DPAD_RIGHT");
+						_SendADBCommand(L"shell input keyevent DPAD_RIGHT");
+						_SendADBCommand(L"shell input keyevent ENTER");
+						PUTLOG(L"認証しました");
+
+						::Sleep(500);
+						_DoSoundStreaming();
+						return;	// success!
+
+					}
+					PUTLOG(L"retry count: %d", i);
+					::Sleep(300);
+				}
+#if  0
 				auto ssPath = GetExeDirectory() / L"screenshot.png";
 				enum { kMaxRetryCount = 5 };
 				for (int i = 0; i < kMaxRetryCount; ++i) {
@@ -506,6 +540,7 @@ void CMainDlg::_SndcpyAutoPermission(const std::wstring& deviceSerial, bool bMan
 					}
 					PUTLOG(L"retry count: %d", i);
 				}
+#endif
 			}
 			PUTLOG(L"sndcpyのダイアログが確認できませんでした...");
 		}
@@ -554,11 +589,11 @@ void CMainDlg::_DoSoundStreaming()
 			}
 
 			m_wavePlay = std::make_unique<WavePlay>();
-			m_wavePlay->Init(m_config.bufferMultiple, m_config.playTimeRealTimeThreshold_ms);
+			m_wavePlay->SetMainDlgHWND(m_hWnd);
+			m_wavePlay->Init(m_config.bufferMultiple, m_config.maxBufferSampleCount);
 			const int bufferSize = m_wavePlay->GetBufferBytes();
 
 			m_wavePlay->SetVolume(kMaxVolume - m_sliderVolume.GetPos());
-			m_wavePlay->m_pSock = &sock;
 
 			sock.SetBlocking(true);
 			auto buffer = std::make_unique<char[]>(bufferSize);
@@ -575,7 +610,7 @@ void CMainDlg::_DoSoundStreaming()
 			while (!m_cancelSoundStreaming) {
 				//char buffer[1024];
 				int recvSize = sock.Read(buffer.get(), bufferSize);
-				if (recvSize == 0) {
+				if (recvSize == 0 && sock.IsConnected()) {
 					continue;
 				}
 				if (recvSize == -1) {
@@ -583,11 +618,11 @@ void CMainDlg::_DoSoundStreaming()
 					PUTLOG(L"Socket Error");
 					break;
 				}
-
+#if 0
 				if (::GetAsyncKeyState(VK_MENU) < 0 && ::GetAsyncKeyState(VK_SHIFT)) {
 					continue;	// drain
 				}
-
+#endif
 				m_wavePlay->WriteBuffer((const BYTE*)buffer.get(), recvSize);
 			}
 			m_wavePlay.reset();

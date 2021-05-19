@@ -22,8 +22,9 @@
 #define IDC_CHECK_TURN_SCREEN_OFF       1012
 #define IDC_EDIT_BUFFER_MULTIPLE        1013
 #define IDC_EDIT_PLAYTIME_REALTIME_THRESHOLD_MS 1014
-#define IDC_CHECK3                      1015
+#define IDC_EDIT_MAXBUFFERSAMPLECOUNT   1014
 #define IDC_CHECK_DEVICE_MUTE_ON_START  1015
+#define IDC_EDIT_WAVEPLAYINFO           1016
 
 // Next default values for new objects
 // 
@@ -31,7 +32,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        204
 #define _APS_NEXT_COMMAND_VALUE         32775
-#define _APS_NEXT_CONTROL_VALUE         1016
+#define _APS_NEXT_CONTROL_VALUE         1017
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

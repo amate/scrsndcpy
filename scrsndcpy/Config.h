@@ -15,7 +15,7 @@ struct Config
 
 	// sndcpy
 	int		bufferMultiple = 2;
-	int		playTimeRealTimeThreshold_ms = 50;
+	int		maxBufferSampleCount = 2000;
 	bool	deviceMuteOnStart = true;
 
 	bool	LoadConfig();
