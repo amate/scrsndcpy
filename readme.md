@@ -1,6 +1,7 @@
 
 # scrsndcpy
 
+![](https://raw.githubusercontent.com/amate/scrsndcpy/images/images/ss2.png)
 
 ## ■はじめに
 このソフトは、USB(もしくはWi-Fi)で接続されたAndroidデバイスの画面と音声を、PC上でミラーリングするために作られました
