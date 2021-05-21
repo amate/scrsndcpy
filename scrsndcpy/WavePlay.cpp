@@ -238,6 +238,8 @@ void WavePlay::Term()
 	//	m_hTask = NULL;
 	//}
 	if (m_spAudioClient) {
+		m_threadBufferConsume.join();
+
 		m_spSimpleAudioVolume.Release();
 		m_spAudioClock.Release();
 		m_spRenderClient.Release();
@@ -246,7 +248,6 @@ void WavePlay::Term()
 		hr = m_spAudioClient->Stop();
 		m_spAudioClient.Release();
 
-		m_threadBufferConsume.join();
 	}
 }
 
@@ -283,8 +284,19 @@ void WavePlay::_BufferConsume()
 	hr = m_spAudioClient->GetBufferSize(&bufferFrameCount);
 	ATLASSERT(SUCCEEDED(hr));
 
-	if (m_maxBufferSampleCount < bufferFrameCount) {
-		m_maxBufferSampleCount = bufferFrameCount;
+	if (m_maxBufferSampleCount < static_cast<int>(bufferFrameCount)) {
+		m_maxBufferSampleCount = static_cast<int>(bufferFrameCount);
+	}
+
+	// 最初に最大までバッファを溜める
+	const size_t maxBufferSize = (m_maxBufferSampleCount + bufferFrameCount)  * m_frameSize;
+	while (!m_exit) {
+		CCritSecLock lock(m_cs);
+		if (maxBufferSize <= m_buffer.size()) {
+			break;
+		}
+		lock.Unlock();
+		::Sleep(0);
 	}
 
 	int i = 0;
@@ -292,7 +304,7 @@ void WavePlay::_BufferConsume()
 	int maxSample = 0;
 	int adjustBufferCount = 0;
 	int playSample = 0;
-	for (;!m_exit;) {
+	while (!m_exit) {
 		UINT32	numFramesAvailable = 0;
 		UINT32  availableBufferSize = 0;
 
@@ -349,13 +361,13 @@ void WavePlay::_BufferConsume()
 			playSample += bufferFrameSize;
 
 			{
-				if (::GetAsyncKeyState(VK_CONTROL) < 0 && ::GetAsyncKeyState(VK_MENU) < 0) {
-					m_buffer.clear();
-				}
+				//if (::GetAsyncKeyState(VK_CONTROL) < 0 && ::GetAsyncKeyState(VK_MENU) < 0) {
+				//	m_buffer.clear();
+				//}
 				bufferSampleCount = (restBufferSize - bufferSize) / m_frameSize;
 
-				minSample = min(minSample, bufferSampleCount);
-				maxSample = max(maxSample, bufferSampleCount);
+				minSample = min(minSample, static_cast<int>(bufferSampleCount));
+				maxSample = max(maxSample, static_cast<int>(bufferSampleCount));
 
 				// バッファ調整
 				const int kMaxBufferSample = m_maxBufferSampleCount;//bufferFrameCount * 2;
@@ -382,8 +394,8 @@ void WavePlay::_BufferConsume()
 		auto elapsed = duration_cast<milliseconds>(nowTime - prevTime).count();
 		if (elapsed >= 1000) {
 #ifdef _DEBUG
-			INFO_LOG << L"bufferSampleCount: " << bufferSampleCount << L" \ti: " << i  << L" playSample: " << playSample
-					<< L" min: " << minSample << L" \tmax: " << maxSample << L" \tadjustBufferCount: " << adjustBufferCount;
+			//INFO_LOG << L"bufferSampleCount: " << bufferSampleCount << L" \ti: " << i  << L" playSample: " << playSample
+			//		<< L" min: " << minSample << L" \tmax: " << maxSample << L" \tadjustBufferCount: " << adjustBufferCount;
 #endif
 			::PostMessage(m_hWndMainDlg, CMainDlg::WM_WAVEPlAY_INFO, MAKELONG(playSample, adjustBufferCount), MAKELONG(minSample, maxSample));
 

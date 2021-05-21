@@ -67,6 +67,7 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
+    <IncludePath>C:\Programing\WTL10_10320_Release\Include;C:\Programing\boost_1_73_0\lib\include\boost-1_73;C:\Programing\boost_1_72_0\lib\include\boost-1_72;C:\Programing\boost_1_70_0\lib\include\boost-1_70;C:\Programing\boost_1_64_0\lib\include\boost-1_64;C:\Programing\WTL10_9163\Include;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
@@ -74,18 +75,22 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
+    <IncludePath>C:\Programing\WTL10_10320_Release\Include;C:\Programing\boost_1_73_0\lib\include\boost-1_73;C:\Programing\boost_1_72_0\lib\include\boost-1_72;C:\Programing\boost_1_70_0\lib\include\boost-1_70;C:\Programing\boost_1_64_0\lib\include\boost-1_64;C:\Programing\WTL10_9163\Include;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
     <IncludePath>C:\Programing\WTL10_10320_Release\Include;C:\Programing\boost_1_72_0\lib64\include\boost-1_72;C:\Programing\WTL10_9163\Include;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
   </PropertyGroup>
-  <PropertyGroup Label="Vcpkg">
-    <VcpkgEnableManifest>true</VcpkgEnableManifest>
+  <PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <VcpkgUseStatic>true</VcpkgUseStatic>
   </PropertyGroup>
   <PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <VcpkgUseStatic>true</VcpkgUseStatic>
   </PropertyGroup>
   <PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <VcpkgUseStatic>true</VcpkgUseStatic>
+  </PropertyGroup>
+  <PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <VcpkgUseStatic>true</VcpkgUseStatic>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -219,7 +224,6 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="TesseractWrapper.cpp" />
     <ClCompile Include="Utility\CodeConvert.cpp" />
     <ClCompile Include="Utility\CommonUtility.cpp" />
     <ClCompile Include="Utility\GdiplusUtil.cpp" />
@@ -236,7 +240,6 @@
     <ClInclude Include="resource.h" />
     <ClInclude Include="Socket.h" />
     <ClInclude Include="stdafx.h" />
-    <ClInclude Include="TesseractWrapper.h" />
     <ClInclude Include="Utility\CodeConvert.h" />
     <ClInclude Include="Utility\CommonUtility.h" />
     <ClInclude Include="Utility\DropHandler.h" />
@@ -253,6 +256,12 @@
   </ItemGroup>
   <ItemGroup>
     <Image Include="res\scrsndcpy.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\delayFrame\delayFrame.vcxproj">
+      <Project>{e2f549a7-7739-4624-acf4-e50ff72934c1}</Project>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

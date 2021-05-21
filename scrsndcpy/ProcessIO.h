@@ -10,7 +10,13 @@ public:
 	ProcessIO();
 	~ProcessIO();
 
+	// exePathを実行する
 	bool	StartProcess(const std::wstring& exePath, const std::wstring& commandLine, bool showWindow = true);
+
+	// 実行したプロセスの情報を返す
+	const PROCESS_INFORMATION& GetProcessInfomation() const {
+		return m_processInfo;
+	}
 
 	// 生成したプロセスの標準入力に書き込み
 	void	WriteStdIn(const std::string& text);

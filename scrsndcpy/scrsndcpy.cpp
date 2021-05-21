@@ -9,12 +9,23 @@
 #include "Socket.h"
 
 CAppModule _Module;
-
+HANDLE g_hJob;
 
 std::string	LogFileName()	// for Logger
 {
 	auto logPath = GetExeDirectory() / L"info.log";
 	return logPath.string();
+}
+
+void InterlockChildprocessSuicide()
+{
+	g_hJob = ::CreateJobObject(nullptr, nullptr);
+	ATLASSERT(g_hJob);
+	JOBOBJECT_EXTENDED_LIMIT_INFORMATION extendedLimit = {};
+	extendedLimit.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+	::SetInformationJobObject(g_hJob, JobObjectExtendedLimitInformation, &extendedLimit, sizeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION));
+
+	::AssignProcessToJobObject(g_hJob, ::GetCurrentProcess());
 }
 
 int Run(LPTSTR /*lpstrCmdLine*/ = NULL, int nCmdShow = SW_SHOWDEFAULT)
@@ -50,6 +61,8 @@ int WINAPI _tWinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPTSTR lp
 
 	CSocket::Init();
 	GdiplusInit();
+
+	InterlockChildprocessSuicide();
 
 	int nRet = Run(lpstrCmdLine, nCmdShow);
 

@@ -51,9 +51,6 @@
     <ClCompile Include="ProcessIO.cpp">
       <Filter>Header Files</Filter>
     </ClCompile>
-    <ClCompile Include="TesseractWrapper.cpp">
-      <Filter>Header Files</Filter>
-    </ClCompile>
     <ClCompile Include="Config.cpp">
       <Filter>Header Files</Filter>
     </ClCompile>
@@ -108,9 +105,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ProcessIO.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="TesseractWrapper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Config.h">

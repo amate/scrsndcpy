@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "ProcessIO.h"
 
+
 ProcessIO::ProcessIO()
 {
 }
@@ -46,7 +47,6 @@ bool ProcessIO::StartProcess(const std::wstring& exePath, const std::wstring& co
 		startUpInfo.dwFlags |= STARTF_USESHOWWINDOW;
 		startUpInfo.wShowWindow = SW_HIDE;
 	}
-	PROCESS_INFORMATION processInfo = {};
 
 	BOOL bRet = ::CreateProcess(exePath.c_str(), (LPWSTR)commandLine.data(),
 		nullptr, nullptr, TRUE, 0, nullptr, nullptr, &startUpInfo, &m_processInfo);

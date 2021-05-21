@@ -98,14 +98,15 @@ public:
 
 private:
 	void	_AdbTrackDeviceInit();
-	void	_SndcpyAutoPermission(const std::wstring& deviceSerial, bool bManual = false);
-	std::string	_SendADBCommand(const std::wstring& command);
+	bool	_ScrcpyStart();
+	void	_SndcpyAutoPermission(bool bManual = false);
+	std::string	_SendADBCommand(const std::wstring& command, std::string deviceSerial = "");
 	void	_DoSoundStreaming();
 	void	_StopStreaming();
 
 	std::wstring	_BuildScrcpyCommandLine();
-	HWND	_FindScrcpyWindow();
-	std::wstring	_GetAdbCommand(const std::string& commandName);
+	HWND			_FindScrcpyWindow();
+	std::string		_SendCommonAdbCommand(const std::string& commandName, std::string deviceSerial = "");
 
 	void CloseDialog(int nVal);
 
@@ -116,11 +117,13 @@ private:
 	CTrackBarCtrl	m_sliderVolume;
 
 	std::vector<std::string>	m_deviceList;
+	bool			m_bFirstDeviceCheck = true;
 	std::wstring	m_currentDeviceSerial;
 
 	ProcessIO	m_adbTrackDevicesProcess;
 
 	ProcessIO	m_scrcpyProcess;
+	CHandle		m_sharedMemFilemap;
 	std::thread	m_threadSoundStreeming;
 	std::atomic_bool	m_cancelSoundStreaming = false;
 	std::unique_ptr<WavePlay>	m_wavePlay;

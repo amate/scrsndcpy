@@ -28,13 +28,9 @@ obj/
 _ReSharper*/
 
 /enc_temp_folder/
-/EventGetAnalyzeBuild/
 /#Release/
 /.vs/
-/simstring-1.0/
 
-/opencv/
-/tesseract/
 /vcpkg*/
 /win32-darkmode-master/
 
@@ -43,3 +39,4 @@ R[CD]a33180
 
 /scrsndcpy/RCa33180
 /scrsndcpy/RDa33180
+

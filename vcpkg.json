@@ -2,11 +2,6 @@
     "name": "scrsndcpypackage",
     "version-string": "1.0",
     "dependencies": [
-        {
-            "name": "tesseract",
-            "features": [
-                "cpu-independed"
-            ]
-        }
+        "minhook"
     ]
 }
