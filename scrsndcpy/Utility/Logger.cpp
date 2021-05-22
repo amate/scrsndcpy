@@ -15,7 +15,9 @@ namespace sinks = boost::log::sinks;
 namespace keywords = boost::log::keywords;
 namespace logging = boost::log;
 
+//#ifdef _DEBUG
 #define SHOW_CONSOLE
+//#endif
 
 //Defines a global logger initialization routine
 BOOST_LOG_GLOBAL_LOGGER_INIT(my_logger, logger_t)

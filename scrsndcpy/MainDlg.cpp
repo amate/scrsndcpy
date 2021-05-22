@@ -122,6 +122,14 @@ LRESULT CMainDlg::OnInitDialog(UINT, WPARAM, LPARAM, BOOL&)
 
 	DoDataExchange(DDX_LOAD);
 
+	// コンソールウィンドウを非表示にする
+	INFO_LOG << L"起動";
+	HWND hwndConsole = ::GetConsoleWindow();
+	ATLASSERT(hwndConsole);
+#ifndef _DEBUG
+	::ShowWindow(hwndConsole, SW_HIDE);
+#endif
+
 	m_editLog.SetLimitText(0);
 
 	m_sliderVolume.ModifyStyle(0, TBS_REVERSED);
@@ -607,6 +615,7 @@ bool CMainDlg::_ScrcpyStart()
 		::CloseHandle(hRemoteThread);
 	}
 
+#if 0
 	// scrcpyのコンソールウィンドウを非表示にする
 	enum { kMaxRetryCount = 10 };
 	for (int i = 0; i < kMaxRetryCount; ++i) {
@@ -617,7 +626,7 @@ bool CMainDlg::_ScrcpyStart()
 		}
 		::Sleep(100);
 	}
-
+#endif
 	return true;	// success!
 }
 
