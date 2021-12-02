@@ -4,6 +4,8 @@
 
 #pragma once
 
+#define	APP_VERSION L"v1.2"
+
 class CAboutDlg : public CDialogImpl<CAboutDlg>
 {
 public:
@@ -23,6 +25,13 @@ public:
 	LRESULT OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/)
 	{
 		CenterWindow(GetParent());
+
+		CWindow staticAboutText = GetDlgItem(IDC_STATIC_ABOUT_TEXT);
+		CString text;
+		staticAboutText.GetWindowTextW(text.GetBuffer(128), 128);
+		text.ReleaseBuffer();
+		text.Replace(L"%APP_VERSION%", APP_VERSION);
+		staticAboutText.SetWindowTextW(text);
 		return TRUE;
 	}
 

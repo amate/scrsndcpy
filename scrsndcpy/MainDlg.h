@@ -21,6 +21,8 @@
 
 #include "Utility\json.hpp"
 
+struct SharedMemoryData;
+
 #define PUTLOG	CMainDlg::PutLog
 
 class CMainDlg : 
@@ -37,6 +39,13 @@ public:
 		kMaxVolume = 100,
 
 		WM_WAVEPlAY_INFO = WM_APP + 1,
+		WM_PUTLOG = WM_APP + 2,
+		WM_RUN_SCRSNDCPY = WM_APP + 10,
+
+		kSleepResumeTimerId = 1,
+		kSleepResumeTimerInterval = 15 * 1000,
+		kAutoRunTimerId = 2,
+		kAutoRunTimerInterval = 2 * 1000,
 	};
 
 	virtual BOOL PreTranslateMessage(MSG* pMsg)
@@ -67,6 +76,10 @@ public:
 	BEGIN_MSG_MAP_EX(CMainDlg)
 		MESSAGE_HANDLER(WM_INITDIALOG, OnInitDialog)
 		MESSAGE_HANDLER(WM_DESTROY, OnDestroy)
+		MSG_WM_POWERBROADCAST(OnPowerBroadcast)
+		MSG_WM_TIMER(OnTimer)
+		MESSAGE_HANDLER_EX(WM_PUTLOG, OnPutLog)
+		MESSAGE_HANDLER_EX(WM_RUN_SCRSNDCPY, OnRunScrsndcpy)
 		COMMAND_ID_HANDLER(ID_APP_ABOUT, OnAppAbout)
 		COMMAND_ID_HANDLER(IDC_CHECK_SCREENSOUNDCOPY, OnScreenSoundCopy)
 		COMMAND_ID_HANDLER(IDCANCEL, OnCancel)
@@ -85,6 +98,11 @@ public:
 
 	LRESULT OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
+	BOOL	OnPowerBroadcast(DWORD dwPowerEvent, DWORD_PTR dwData);
+	void	OnTimer(UINT_PTR nIDEvent);
+	LRESULT OnPutLog(UINT uMsg, WPARAM wParam, LPARAM lParam);	
+	LRESULT OnRunScrsndcpy(UINT uMsg, WPARAM wParam, LPARAM lParam);
+
 	LRESULT OnAppAbout(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnScreenSoundCopy(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnCancel(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
@@ -115,6 +133,7 @@ private:
 	CButton	m_checkSSC;
 	CComboBox		m_cmbDevices;
 	CTrackBarCtrl	m_sliderVolume;
+	int		m_prevVolume = 0;
 
 	std::vector<std::string>	m_deviceList;
 	bool			m_bFirstDeviceCheck = true;
@@ -133,4 +152,9 @@ private:
 	CPoint	m_scrcpyWidowPos;
 
 	CEdit	m_wavePlayInfo;
+
+	SharedMemoryData*	m_sharedMemoryData = nullptr;
+
+	HPOWERNOTIFY	m_powerNotifyHandle = NULL;
+	bool			m_runningBeforeSleep = false;
 };

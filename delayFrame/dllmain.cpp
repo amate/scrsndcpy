@@ -4,8 +4,11 @@
 #include <assert.h>
 #include <chrono>
 #include <queue>
+#include <string>
 
 #include "MinHook.h"
+#include "SharedMemoryData.h"
+#include "SDL_events.h"
 
 using namespace std::chrono;
 
@@ -18,6 +21,7 @@ HMODULE g_hModule;
 // 遅延用のフレームが入ってる
 std::queue<AVFrame*>   g_delayFrameQue;
 uint32_t    g_delayFrameCount = 0;
+SharedMemoryData*    g_sharedMemoryData;
 
 #define CHKPROC_API __declspec(dllexport)
 
@@ -81,28 +85,73 @@ void 	Replaced_av_frame_move_ref(AVFrame* dst, AVFrame* src)
     }
 }
 
+// ===========================================
+
+
+using Func_SDL_WaitEvent = int (SDLCALL*)(SDL_Event* event);
+Func_SDL_WaitEvent  g_org_SDL_WaitEvent;
+
+int 	Replaced_SDL_WaitEvent(SDL_Event* event)
+{
+    int ret = g_org_SDL_WaitEvent(event);
+#if 0
+    if (event->type == SDL_KEYDOWN) {
+        if (event->key.keysym.sym == SDLK_g) {
+            OutputDebugStringW(L"g\n");
+        }
+    }
+#endif
+
+    if (event->type == SDL_MOUSEMOTION) {
+        if (event->motion.x == 0 && event->motion.y == 0) {
+            if (g_sharedMemoryData->doEventFlag) {
+                g_sharedMemoryData->doEventFlag = false;
+                // Ctrl + g : ウィンドウをオリジナルサイズへリサイズさせる
+                event->type = SDL_KEYDOWN;
+                event->key.keysym.scancode = SDL_SCANCODE_G;
+                event->key.keysym.mod = KMOD_LCTRL;
+                event->key.keysym.sym = SDLK_g;
+                OutputDebugStringW(L"Replaced_SDL_WaitEvent: Ctrl+G\n");
+            }
+        }
+    }
+    return ret;
+}
+
+// ===========================================
 
 void    Init()
 {
-    HMODULE hDll = ::LoadLibraryA("avutil-56.dll");
-    assert(hDll);
+    {
+        HMODULE hDll = ::LoadLibraryA("avutil-56.dll");
+        assert(hDll);
 
-    g_func_av_frame_clone = (Func_av_frame_clone)::GetProcAddress(hDll, "av_frame_clone");
-    assert(g_func_av_frame_clone);
+        g_func_av_frame_clone = (Func_av_frame_clone)::GetProcAddress(hDll, "av_frame_clone");
+        assert(g_func_av_frame_clone);
 
-    g_func_av_frame_ref = (Func_av_frame_ref)::GetProcAddress(hDll, "av_frame_ref");
-    assert(g_func_av_frame_ref);
+        g_func_av_frame_ref = (Func_av_frame_ref)::GetProcAddress(hDll, "av_frame_ref");
+        assert(g_func_av_frame_ref);
 
-    g_func_av_frame_free = (Func_av_frame_free)::GetProcAddress(hDll, "av_frame_free");
-    assert(g_func_av_frame_free);
+        g_func_av_frame_free = (Func_av_frame_free)::GetProcAddress(hDll, "av_frame_free");
+        assert(g_func_av_frame_free);
 
-    g_func_av_frame_unref = (Func_av_frame_unref)::GetProcAddress(hDll, "av_frame_unref");
-    assert(g_func_av_frame_unref);
+        g_func_av_frame_unref = (Func_av_frame_unref)::GetProcAddress(hDll, "av_frame_unref");
+        assert(g_func_av_frame_unref);
+    }
+    {
+        HMODULE hDll = ::LoadLibraryA("SDL2.dll");
+        assert(hDll);
+
+        g_org_SDL_WaitEvent = (Func_SDL_WaitEvent)::GetProcAddress(hDll, "SDL_WaitEvent");
+        assert(g_org_SDL_WaitEvent);
+    }
 
     // Hook
     MH_Initialize();
     auto ret = MH_CreateHookApi(L"avutil-56.dll", "av_frame_move_ref", (LPVOID)&Replaced_av_frame_move_ref, (LPVOID*)&g_org_av_frame_move_ref);
     bool success = ret == MH_OK;
+
+    auto ret2 = MH_CreateHookApi(L"SDL2.dll", "SDL_WaitEvent", (LPVOID)&Replaced_SDL_WaitEvent, (LPVOID*)&g_org_SDL_WaitEvent);
 
     MH_EnableHook(MH_ALL_HOOKS);
     OutputDebugStringW(success ? L"Hook OK\n" : L"Hook failed...\n");
@@ -110,16 +159,16 @@ void    Init()
     // 設定読み込み
     const DWORD processID = ::GetCurrentProcessId();
     std::wstring sharedMemName = L"delayFrame" + std::to_wstring(processID);
-    HANDLE hFilemap = ::OpenFileMapping(FILE_MAP_READ, FALSE, sharedMemName.c_str());
+    HANDLE hFilemap = ::OpenFileMapping(FILE_MAP_READ | FILE_MAP_WRITE, FALSE, sharedMemName.c_str());
     assert(hFilemap);
 
-    uint32_t* pDelayFrameCount = (uint32_t*)::MapViewOfFile(hFilemap, FILE_MAP_READ, 0, 0, sizeof(uint32_t));
-    assert(pDelayFrameCount);
-    g_delayFrameCount = *pDelayFrameCount;
+    g_sharedMemoryData = (SharedMemoryData*)::MapViewOfFile(hFilemap, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, sizeof(SharedMemoryData));
+    assert(g_sharedMemoryData);
+    g_delayFrameCount = g_sharedMemoryData->delayFrameCount;
     OutputDebugStringW((std::wstring(L"delayFrameCount: " + std::to_wstring(g_delayFrameCount) + L"\n").c_str()));
 
-    ::UnmapViewOfFile((LPCVOID)pDelayFrameCount);
-    ::CloseHandle(hFilemap);
+    //::UnmapViewOfFile((LPCVOID)pDelayFrameCount);
+    //::CloseHandle(hFilemap);
 }
 
 BOOL APIENTRY DllMain( HMODULE hModule,

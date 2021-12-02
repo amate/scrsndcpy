@@ -16,6 +16,9 @@ bool ProcessIO::StartProcess(const std::wstring& exePath, const std::wstring& co
 	ATLASSERT(!m_processThread.joinable());
 
 	m_exePath = exePath;	// for debug
+	INFO_LOG << L"StartProcess - exePath: " << exePath << L" commandLine: " << commandLine;
+
+	m_threadCancel = false;
 
 	SECURITY_ATTRIBUTES securityAttributes = { sizeof(SECURITY_ATTRIBUTES) };
 	securityAttributes.bInheritHandle = TRUE;
@@ -30,8 +33,8 @@ bool ProcessIO::StartProcess(const std::wstring& exePath, const std::wstring& co
 		throw std::runtime_error("Stdin SetHandleInformation");
 
 	// 標準出力用のパイプハンドル作成
-	CHandle stdoutWrite;	// 子プロセスへ渡す
-	if (!::CreatePipe(&m_stdoutRead.m_h, &stdoutWrite.m_h, &securityAttributes, 0))
+	//CHandle stdoutWrite;	// 子プロセスへ渡す
+	if (!::CreatePipe(&m_stdoutRead.m_h, &m_stdoutWrite.m_h, &securityAttributes, 0))
 		throw std::runtime_error("CreatePipe failed");
 
 	// Ensure the write handle to the pipe for STDIN is not inherited. 
@@ -41,8 +44,8 @@ bool ProcessIO::StartProcess(const std::wstring& exePath, const std::wstring& co
 	STARTUPINFO startUpInfo = { sizeof(STARTUPINFO) };
 	startUpInfo.dwFlags = STARTF_USESTDHANDLES;
 	startUpInfo.hStdInput = stdinRead;
-	startUpInfo.hStdOutput = stdoutWrite;
-	startUpInfo.hStdError = stdoutWrite;
+	startUpInfo.hStdOutput = m_stdoutWrite;
+	startUpInfo.hStdError = m_stdoutWrite;
 	if (!showWindow) {
 		startUpInfo.dwFlags |= STARTF_USESHOWWINDOW;
 		startUpInfo.wShowWindow = SW_HIDE;
@@ -52,6 +55,7 @@ bool ProcessIO::StartProcess(const std::wstring& exePath, const std::wstring& co
 		nullptr, nullptr, TRUE, 0, nullptr, nullptr, &startUpInfo, &m_processInfo);
 	ATLASSERT(bRet);
 	if (!bRet) {
+		WARN_LOG << L"CreateProcess failed: " << exePath;
 		return false;	// failed
 	}
 
@@ -73,20 +77,33 @@ void ProcessIO::WriteStdIn(const std::string& text)
 
 void ProcessIO::Terminate()
 {
+	INFO_LOG << L"TerminateProcess : " << m_exePath << L"\n hProcess: " << m_processInfo.hProcess << L"\n m_processThread.joinable(): " << m_processThread.joinable();
+
 	if (m_processThread.joinable()) {
-		INFO_LOG << L"TerminateProcess : " << m_exePath;
 
 		m_threadCancel = true;
-		HANDLE hProcess = m_processInfo.hProcess;
-		m_processInfo.hProcess = NULL;
-		BOOL b = ::TerminateProcess(hProcess, 0);
+		DWORD writeBytes = 0;
+		BOOL bRet = ::WriteFile(m_stdoutWrite, "exit", 4, &writeBytes, nullptr);
 
-		//// 終了コードを書く
-		m_stdinWrite.Close();
-		m_stdoutRead.Close();
+		BOOL b = ::TerminateProcess(m_processInfo.hProcess, 0);
 
-		m_processThread.detach();
+		m_processThread.join();
 	}
+
+	if (m_processInfo.hThread) {
+		::CloseHandle(m_processInfo.hThread);
+	}
+	if (m_processInfo.hProcess) {
+		::CloseHandle(m_processInfo.hProcess);
+	}
+	m_processInfo = PROCESS_INFORMATION{};
+
+	m_stdoutWrite.Close();
+
+	m_stdinWrite.Close();
+	m_stdoutRead.Close();
+
+	INFO_LOG << L"TerminateProcess finish!";
 }
 
 void ProcessIO::_IOThreadMain()
@@ -99,26 +116,25 @@ void ProcessIO::_IOThreadMain()
 		if (!bRet || readSize == 0) { // EOF
 			break;
 		}
+		if (m_threadCancel) {
+			break;
+		}
 
 		ATLASSERT(m_stdoutCallback);
 		m_stdoutCallback(buffer);
 	}
+	INFO_LOG << L"_IOThreadMain - " << L" hProcess: " << m_processInfo.hProcess << L" - ReadFile EOF";
+
 	// 終了待ち
 	::WaitForSingleObject(m_processInfo.hProcess, INFINITE);
 
 	DWORD dwExitCode = 0;
 	GetExitCodeProcess(m_processInfo.hProcess, &dwExitCode);
 
+	INFO_LOG << L"_IOThreadMain - " << L" hProcess: " << m_processInfo.hProcess << L" - process finish - dwExitCode : " << dwExitCode;
+
 	if (!m_threadCancel) {
-		::CloseHandle(m_processInfo.hThread);
-		if (m_processInfo.hProcess) {
-			::CloseHandle(m_processInfo.hProcess);
-		}
-
-		m_processInfo = PROCESS_INFORMATION{};
-		m_stdinWrite.Close();
-		m_stdoutRead.Close();
-
+		INFO_LOG << L"_IOThreadMain - " << L" hProcess: " << m_processInfo.hProcess << L" - !m_threadCancel - normal finish";
 		m_processThread.detach();
 	}
 }

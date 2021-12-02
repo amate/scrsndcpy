@@ -41,6 +41,7 @@ bool Config::LoadConfig()
 
 	}
 	autoWifiConnect = jsonSetting["Config"].value("AutoWifiConnect", autoWifiConnect);
+	reconnectOnResume = jsonSetting["Config"].value("ReconnectOnResume", reconnectOnResume);
 
 	// scrcpy
 	maxSize = jsonSetting["Config"].value("MaxSize", maxSize);
@@ -48,12 +49,14 @@ bool Config::LoadConfig()
 	bitrate = jsonSetting["Config"].value("Bitrate", bitrate);
 	turnScreenOff = jsonSetting["Config"].value("TurnScreenOff", turnScreenOff);
 	delayFrameCount = jsonSetting["Config"].value("DelayFrameCount", delayFrameCount);
+	videoBuffer_ms = jsonSetting["Config"].value("VideoBuffer_ms", videoBuffer_ms);
+	noResize = jsonSetting["Config"].value("NoResize", noResize);
 
 	// sndcpy
 	bufferMultiple = jsonSetting["Config"].value("BufferMultiple", bufferMultiple);
 	maxBufferSampleCount =
 		jsonSetting["Config"].value("MaxBufferSampleCount", maxBufferSampleCount);
-	deviceMuteOnStart = jsonSetting["Config"].value("DeviceMuteOnStart", deviceMuteOnStart);
+	toggleMuteReverse = jsonSetting["Config"].value("ToggleMuteReverse", toggleMuteReverse);
 
 	return true;
 }
@@ -77,16 +80,20 @@ void Config::SaveConfig()
 	std::string obfuPass = ss.str();
 	jsonSetting["Config"]["LoginPassword"] = obfuPass;
 	jsonSetting["Config"]["AutoWifiConnect"] = autoWifiConnect;
+	jsonSetting["Config"]["ReconnectOnResume"] = reconnectOnResume;
 
 	jsonSetting["Config"]["MaxSize"] = maxSize;
 	jsonSetting["Config"]["MaxFPS"] = maxFPS;
 	jsonSetting["Config"]["Bitrate"] = bitrate;
 	jsonSetting["Config"]["TurnScreenOff"] = turnScreenOff;
 	jsonSetting["Config"]["DelayFrameCount"] = delayFrameCount;
+	jsonSetting["Config"]["VideoBuffer_ms"] = videoBuffer_ms;
+	jsonSetting["Config"]["NoResize"] = noResize;
 
 	jsonSetting["Config"]["BufferMultiple"] = bufferMultiple;
 	jsonSetting["Config"]["MaxBufferSampleCount"] = maxBufferSampleCount;
 	jsonSetting["Config"]["DeviceMuteOnStart"] = deviceMuteOnStart;
+	jsonSetting["Config"]["ToggleMuteReverse"] = toggleMuteReverse;
 
 	std::ofstream ofs((GetExeDirectory() / "setting.json").wstring());
 	ofs << jsonSetting.dump(4);

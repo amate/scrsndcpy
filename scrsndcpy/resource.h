@@ -27,14 +27,20 @@
 #define IDC_EDIT_DELAY_FRAME_COUNT      1016
 #define IDC_CHECK_AUTO_START2           1017
 #define IDC_CHECK_AUTO_WIFI_CONNECT     1017
+#define IDC_STATIC_ABOUT_TEXT           1017
+#define IDC_EDIT_VIDEO_BUFFER_MS        1018
+#define IDC_CHECK_TOGGLE_MUTE_REVERSE   1019
+#define IDC_CHECK_NO_RESIZE             1020
+#define IDC_CHECK_NO_RESIZE2            1021
+#define IDC_CHECK_RECONNECT_ON_RESUME   1021
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        204
+#define _APS_NEXT_RESOURCE_VALUE        205
 #define _APS_NEXT_COMMAND_VALUE         32775
-#define _APS_NEXT_CONTROL_VALUE         1017
+#define _APS_NEXT_CONTROL_VALUE         1021
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

@@ -1,0 +1,33 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="pch.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="dllmain.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="pch.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="framework.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="SDL\SDL_events.h">
+      <Filter>Source Files\SDL</Filter>
+    </ClInclude>
+    <ClInclude Include="SharedMemoryData.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4aa93666-da24-4511-a178-484436aa4c6a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\SDL">
+      <UniqueIdentifier>{cdf18915-9971-4e2e-890d-969050dae08c}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

@@ -1,9 +1,10 @@
-
+ï»¿
 #include "stdafx.h"
 #include "MainDlg.h"
 #include <thread>
 #include <chrono>
 #include <unordered_set>
+#include <regex>
 #include <boost\algorithm\string\trim.hpp>
 
 #include "WavePlay.h"
@@ -15,6 +16,8 @@
 #include "Socket.h"
 
 #include "ConfigDlg.h"
+
+#include "..\delayFrame\SharedMemoryData.h"
 
 using namespace CodeConvert;
 using json = nlohmann::json;
@@ -82,7 +85,9 @@ void CMainDlg::PutLog(LPCWSTR pstrFormat, ...)
 	if (!m_editLog.IsWindow())
 		return;
 
-	CString strText;
+
+	CString* pLog = new CString;
+	CString& strText = *pLog;
 	{
 		va_list args;
 		va_start(args, pstrFormat);
@@ -94,11 +99,14 @@ void CMainDlg::PutLog(LPCWSTR pstrFormat, ...)
 		INFO_LOG << (LPCWSTR)strText;
 	}
 	//strText += _T("\n");
-	strText.Insert(0, _T('\n'));
-	strText.Replace(_T("\n"), _T("\r\n"));
+	CWindow mainDlg = m_editLog.GetParent();
+	mainDlg.PostMessage(WM_PUTLOG, (WPARAM)pLog);
 
-	m_editLog.AppendText(strText);
-	m_editLog.LineScroll(0, INT_MIN);
+	//strText.Insert(0, _T('\n'));
+	//strText.Replace(_T("\n"), _T("\r\n"));
+
+	//m_editLog.AppendText(strText);
+	//m_editLog.LineScroll(0, INT_MIN);
 }
 
 LRESULT CMainDlg::OnInitDialog(UINT, WPARAM, LPARAM, BOOL&)
@@ -122,13 +130,16 @@ LRESULT CMainDlg::OnInitDialog(UINT, WPARAM, LPARAM, BOOL&)
 
 	DoDataExchange(DDX_LOAD);
 
-	// ƒRƒ“ƒ\[ƒ‹ƒEƒBƒ“ƒhƒE‚ğ”ñ•\¦‚É‚·‚é
-	INFO_LOG << L"‹N“®";
+	// ã‚³ãƒ³ã‚½ãƒ¼ãƒ«ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‚’éè¡¨ç¤ºã«ã™ã‚‹
+	INFO_LOG << L"èµ·å‹•";
 	HWND hwndConsole = ::GetConsoleWindow();
 	ATLASSERT(hwndConsole);
 #ifndef _DEBUG
 	::ShowWindow(hwndConsole, SW_HIDE);
 #endif
+	// ã‚¹ãƒªãƒ¼ãƒ—å¾©å¸°é€šçŸ¥
+	m_powerNotifyHandle = ::RegisterSuspendResumeNotification(m_hWnd, DEVICE_NOTIFY_WINDOW_HANDLE);
+	ATLASSERT(m_powerNotifyHandle);
 
 	m_editLog.SetLimitText(0);
 
@@ -173,7 +184,7 @@ LRESULT CMainDlg::OnInitDialog(UINT, WPARAM, LPARAM, BOOL&)
 			std::ifstream fs((GetExeDirectory() / "Common.json").string());
 			ATLASSERT(fs);
 			if (!fs) {
-				PUTLOG(L"Common.json‚ª‘¶İ‚µ‚Ü‚¹‚ñ");
+				PUTLOG(L"Common.jsonãŒå­˜åœ¨ã—ã¾ã›ã‚“");
 			} else {
 				fs >> m_jsonCommon;
 			}
@@ -250,11 +261,92 @@ LRESULT CMainDlg::OnDestroy(UINT, WPARAM, LPARAM, BOOL&)
 	pLoop->RemoveMessageFilter(this);
 	pLoop->RemoveIdleHandler(this);
 
+	::UnregisterSuspendResumeNotification(m_powerNotifyHandle);
+	m_powerNotifyHandle = NULL;
+
 	_StopStreaming();
 
 	m_adbTrackDevicesProcess.Terminate();
 
 	return 0;
+}
+
+BOOL CMainDlg::OnPowerBroadcast(DWORD dwPowerEvent, DWORD_PTR dwData)
+{
+	switch (dwPowerEvent) {
+	case PBT_APMSUSPEND:	// ã‚¹ãƒªãƒ¼ãƒ—ã«å…¥ã‚‹
+		PUTLOG(L"Power: susupend - running: %d", m_scrcpyProcess.IsRunning());
+		if (m_scrcpyProcess.IsRunning()) {
+			m_runningBeforeSleep = true;
+
+			BOOL b = TRUE;
+			//OnScreenSoundCopy(0, 0, NULL, b);
+		}
+		break;
+
+	case PBT_APMRESUMEAUTOMATIC:	// å¾©å¸°ã—ãŸ
+		PUTLOG(L"Power: resume - m_runningBeforeSleep: %d", m_runningBeforeSleep);
+		if (m_runningBeforeSleep && m_config.reconnectOnResume) {
+			SetTimer(kSleepResumeTimerId, kSleepResumeTimerInterval);
+		}
+		m_runningBeforeSleep = false;
+		break;
+
+	default:
+		break;
+	} 
+	return TRUE;
+}
+
+void CMainDlg::OnTimer(UINT_PTR nIDEvent)
+{
+	if (nIDEvent == kSleepResumeTimerId) {
+		KillTimer(kSleepResumeTimerId);
+		PUTLOG(L"Sleep Resume - Screen Sound Copy");
+
+		ATLASSERT(m_checkSSC.GetCheck() == BST_UNCHECKED);
+		ATLASSERT(!m_scrcpyProcess.IsRunning());
+		m_checkSSC.SetCheck(BST_CHECKED);
+		BOOL bHandled = TRUE;
+		OnScreenSoundCopy(0, 0, NULL, bHandled);
+
+	} else if (nIDEvent == kAutoRunTimerId) {
+		KillTimer(kAutoRunTimerId);
+		PUTLOG(L"AutoRunTimer");
+
+		ATLASSERT(m_checkSSC.GetCheck() == BST_UNCHECKED);
+		ATLASSERT(!m_scrcpyProcess.IsRunning());
+		m_checkSSC.SetCheck(BST_CHECKED);
+		BOOL bHandled = TRUE;
+		OnScreenSoundCopy(0, 0, NULL, bHandled);
+	}
+}
+
+LRESULT CMainDlg::OnPutLog(UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+	std::unique_ptr<CString> pLogText((CString*)wParam);
+	ATLASSERT(pLogText);
+	CString& strText = *pLogText;
+
+	strText.Insert(0, _T('\n'));
+	strText.Replace(_T("\n"), _T("\r\n"));
+
+	m_editLog.AppendText(strText);
+	m_editLog.LineScroll(0, INT_MIN);
+	return LRESULT();
+}
+
+LRESULT CMainDlg::OnRunScrsndcpy(UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+	PUTLOG(L"OnRunScrsndcpy");
+
+	ATLASSERT(m_checkSSC.GetCheck() == BST_UNCHECKED);
+	ATLASSERT(!m_scrcpyProcess.IsRunning());
+	m_checkSSC.SetCheck(BST_CHECKED);
+	BOOL bHandled = TRUE;
+	OnScreenSoundCopy(0, 0, NULL, bHandled);
+
+	return LRESULT();
 }
 
 LRESULT CMainDlg::OnAppAbout(WORD, WORD, HWND, BOOL&)
@@ -267,7 +359,7 @@ LRESULT CMainDlg::OnAppAbout(WORD, WORD, HWND, BOOL&)
 LRESULT CMainDlg::OnScreenSoundCopy(WORD, WORD wID, HWND, BOOL&)
 {
 	if (m_checkSSC.GetCheck() == BST_UNCHECKED) {
-		PUTLOG(L"ƒXƒgƒŠ[ƒ~ƒ“ƒO‚ğ’â~‚µ‚Ü‚·");
+		PUTLOG(L"ã‚¹ãƒˆãƒªãƒ¼ãƒŸãƒ³ã‚°ã‚’åœæ­¢ã—ã¾ã™");
 		_StopStreaming();
 		m_checkSSC.SetWindowTextW(L"Screen Sound Copy");
 		m_currentDeviceSerial.clear();
@@ -276,11 +368,11 @@ LRESULT CMainDlg::OnScreenSoundCopy(WORD, WORD wID, HWND, BOOL&)
 
 		const int index = m_cmbDevices.GetCurSel();
 		if (index == -1) {
-			MessageBox(L"Ú‘±ƒfƒoƒCƒX‚ğ‘I‘ğ‚µ‚Ä‚­‚¾‚³‚¢");
+			MessageBox(L"æ¥ç¶šãƒ‡ãƒã‚¤ã‚¹ã‚’é¸æŠã—ã¦ãã ã•ã„");
 			return 0;
 		}
 		if (m_cmbDevices.GetItemData(index) == 0) {
-			MessageBox(L"ƒfƒoƒCƒX‚Æ‚ÌÚ‘±‚ªØ‚ê‚Ä‚¢‚Ü‚·");
+			MessageBox(L"ãƒ‡ãƒã‚¤ã‚¹ã¨ã®æ¥ç¶šãŒåˆ‡ã‚Œã¦ã„ã¾ã™");
 			return 0;
 		}
 		std::wstring deviceSerial = UTF16fromUTF8(m_deviceList[index]);
@@ -293,21 +385,21 @@ LRESULT CMainDlg::OnScreenSoundCopy(WORD, WORD wID, HWND, BOOL&)
 		// scrcpy
 		bool success = _ScrcpyStart();
 		if (!success) {
-			PUTLOG(L"scrcpy‚ÌÀs‚É¸”s");
+			PUTLOG(L"scrcpyã®å®Ÿè¡Œã«å¤±æ•—");
 			return 0;
 		}
 
-		// ©“®ƒƒOƒCƒ“
+		// è‡ªå‹•ãƒ­ã‚°ã‚¤ãƒ³
 		if (m_config.loginPassword.size()) {
 			std::string stdoutText = _SendCommonAdbCommand("IsScreenLock");
-			if (stdoutText.find("00000001") != std::string::npos) {	// ‰æ–Ê‚ªƒƒbƒN‚³‚ê‚Ä‚¢‚é
-				PUTLOG(L"©“®ƒƒOƒCƒ“‚µ‚Ü‚·");
-				// ƒƒbƒN‰ğœ‰æ–Ê‚Ö
+			if (stdoutText.find("00000001") != std::string::npos) {	// ç”»é¢ãŒãƒ­ãƒƒã‚¯ã•ã‚Œã¦ã„ã‚‹
+				PUTLOG(L"è‡ªå‹•ãƒ­ã‚°ã‚¤ãƒ³ã—ã¾ã™");
+				// ãƒ­ãƒƒã‚¯è§£é™¤ç”»é¢ã¸
 				_SendADBCommand(L"shell input keyevent MENU");
 				_SendADBCommand(L"shell input keyevent MENU");
-				// ƒpƒXƒ[ƒh“ü—Í
+				// ãƒ‘ã‚¹ãƒ¯ãƒ¼ãƒ‰å…¥åŠ›
 				_SendADBCommand(L"shell input text " + UTF16fromUTF8(m_config.loginPassword));
-				PUTLOG(L"©“®ƒƒOƒCƒ“Š®—¹");
+				PUTLOG(L"è‡ªå‹•ãƒ­ã‚°ã‚¤ãƒ³å®Œäº†");
 			}
 		}
 	
@@ -320,23 +412,45 @@ LRESULT CMainDlg::OnScreenSoundCopy(WORD, WORD wID, HWND, BOOL&)
 
 void CMainDlg::OnToggleMute(UINT uNotifyCode, int nID, CWindow wndCtl)
 {
-	// Android11‚Å—LŒø
-	// i32 3  3 ‚ÍƒƒfƒBƒA‰¹—Ê
-	// i32 101 101 ‚Í ADJUST_TOGGLE_MUTE
-	// https://developer.android.com/reference/android/media/AudioManager#ADJUST_TOGGLE_MUTE
-	// i32 0 ‚Íƒrƒbƒgƒtƒ‰ƒO 1‚ÅUI•\¦ 4‚Å‰¹—Ê•ÏX‚É‰¹‚ª–Â‚é
-	_SendCommonAdbCommand("ToggleMute");
+	if (!m_config.toggleMuteReverse) {
+
+		// Android11ã§æœ‰åŠ¹
+		// i32 3  3 ã¯ãƒ¡ãƒ‡ã‚£ã‚¢éŸ³é‡
+		// i32 101 101 ã¯ ADJUST_TOGGLE_MUTE
+		// https://developer.android.com/reference/android/media/AudioManager#ADJUST_TOGGLE_MUTE
+		// i32 0 ã¯ãƒ“ãƒƒãƒˆãƒ•ãƒ©ã‚° 1ã§UIè¡¨ç¤º 4ã§éŸ³é‡å¤‰æ›´æ™‚ã«éŸ³ãŒé³´ã‚‹
+		_SendCommonAdbCommand("ToggleMute");
+
+	} else {
+		int nPos = kMaxVolume - m_sliderVolume.GetPos();// sliderVolume.SetPos(nPos);
+		if (!m_wavePlay) {
+			return;
+		}
+		if (nPos > 0) {
+			m_prevVolume = m_sliderVolume.GetPos();
+			m_sliderVolume.SetPos(kMaxVolume);
+
+			m_wavePlay->SetVolume(0);
+			_SendCommonAdbCommand("UnMute");
+		} else {
+			int prevVolume = kMaxVolume - m_prevVolume;
+			m_sliderVolume.SetPos(m_prevVolume);
+
+			m_wavePlay->SetVolume(prevVolume);
+			_SendCommonAdbCommand("Mute");
+		}
+	}
 	PUTLOG(L"toggle mute");
 }
 
 void CMainDlg::OnManualSndcpy(UINT uNotifyCode, int nID, CWindow wndCtl)
 {
 	if (m_currentDeviceSerial.empty()) {
-		MessageBox(L"‰æ–Ê‚ª•\¦‚³‚ê‚Ä‚¢‚Ü‚¹‚ñ\r\n[Screen Sound Copy]‚ğÀs‚µ‚Ä‚­‚¾‚³‚¢");
+		MessageBox(L"ç”»é¢ãŒè¡¨ç¤ºã•ã‚Œã¦ã„ã¾ã›ã‚“\r\n[Screen Sound Copy]ã‚’å®Ÿè¡Œã—ã¦ãã ã•ã„");
 		return;
 	}
 	if (m_threadSoundStreeming.joinable()) {
-		PUTLOG(L"SoundStreamingThread‚ğI—¹‚³‚¹‚Ü‚·");
+		PUTLOG(L"SoundStreamingThreadã‚’çµ‚äº†ã•ã›ã¾ã™");
 		m_cancelSoundStreaming = true;
 		m_threadSoundStreeming.join();
 	}
@@ -378,7 +492,7 @@ void CMainDlg::_AdbTrackDeviceInit()
 {
 	m_adbTrackDevicesProcess.RegisterStdOutCallback([this](const std::string& text) {
 		int curIndex = m_cmbDevices.GetCurSel();
-		// ÅŒã‚ÉÚ‘±‚µ‚½ƒfƒoƒCƒXˆÈŠO‚ğƒRƒ“ƒ{ƒ{ƒbƒNƒX‚©‚çíœ
+		// æœ€å¾Œã«æ¥ç¶šã—ãŸãƒ‡ãƒã‚¤ã‚¹ä»¥å¤–ã‚’ã‚³ãƒ³ãƒœãƒœãƒƒã‚¯ã‚¹ã‹ã‚‰å‰Šé™¤
 		while (m_cmbDevices.DeleteString(1) != CB_ERR) {
 			m_deviceList.erase(m_deviceList.begin() + 1);
 		}
@@ -391,11 +505,11 @@ void CMainDlg::_AdbTrackDeviceInit()
 
 		std::unordered_set<std::string> connectedDeviceList;
 
-		// ‘SÚ‘±ƒfƒoƒCƒXæ“¾
+		// å…¨æ¥ç¶šãƒ‡ãƒã‚¤ã‚¹å–å¾—
 		auto deviceList = GetDevices();
 		bool lastConnctedDeviceFound = false;
 		for (const std::string& device : deviceList) {
-			// wifi‚È‚çƒVƒŠƒAƒ‹Šm”F
+			// wifiãªã‚‰ã‚·ãƒªã‚¢ãƒ«ç¢ºèª
 			std::string deviceSerialNumber;
 			if (device.substr(0, 8) == "192.168.") {
 				deviceSerialNumber = _SendCommonAdbCommand("DeviceSerialNumber", device);
@@ -418,7 +532,7 @@ void CMainDlg::_AdbTrackDeviceInit()
 		}
 
 		if (lastConnectedDeviceName.length()) {
-			if (!lastConnctedDeviceFound) {	// ‘O‰ñÚ‘±‚µ‚½ƒfƒoƒCƒX‚ªŒ©‚Â‚©‚ç‚È‚©‚Á‚½ê‡
+			if (!lastConnctedDeviceFound) {	// å‰å›æ¥ç¶šã—ãŸãƒ‡ãƒã‚¤ã‚¹ãŒè¦‹ã¤ã‹ã‚‰ãªã‹ã£ãŸå ´åˆ
 				lastConnectedDeviceName.insert(0, "*[disconnect]");
 			} else {
 				lastConnectedDeviceName.insert(0, "*");
@@ -433,24 +547,26 @@ void CMainDlg::_AdbTrackDeviceInit()
 		}
 		m_cmbDevices.SetCurSel(curIndex);
 
-		// ©“®Às
+		// è‡ªå‹•å®Ÿè¡Œ
 		if (m_bFirstDeviceCheck && m_config.autoStart) {
 			if (lastConnctedDeviceFound) {
-				PUTLOG(L"©“®Às‚µ‚Ü‚·");
-				m_checkSSC.SetCheck(BST_CHECKED);
-				BOOL bHandled = TRUE;
-				OnScreenSoundCopy(0, 0, NULL, bHandled);
+				PUTLOG(L"2ç§’å¾Œã«ã€è‡ªå‹•å®Ÿè¡Œã—ã¾ã™");
+				//m_checkSSC.SetCheck(BST_CHECKED);
+				//BOOL bHandled = TRUE;
+				//OnScreenSoundCopy(0, 0, NULL, bHandled);
+				SetTimer(kAutoRunTimerId, kAutoRunTimerInterval);
+
 			} else {
-				PUTLOG(L"‘O‰ñÚ‘±‚µ‚½ƒfƒoƒCƒX‚ªŒ©‚Â‚©‚ç‚È‚¢‚½‚ßA©“®Às‚ÍƒLƒƒƒ“ƒZƒ‹‚³‚ê‚Ü‚·");
+				PUTLOG(L"å‰å›æ¥ç¶šã—ãŸãƒ‡ãƒã‚¤ã‚¹ãŒè¦‹ã¤ã‹ã‚‰ãªã„ãŸã‚ã€è‡ªå‹•å®Ÿè¡Œã¯ã‚­ãƒ£ãƒ³ã‚»ãƒ«ã•ã‚Œã¾ã™");
 			}
 		}
 
-		// ƒfƒoƒCƒX‘¤‚ÖwifiŒo—R‚Å‚Ìadb‘Ò‚¿ó‚¯‚ğs‚¤‚æ‚¤‚Éw¦‚·‚é
+		// ãƒ‡ãƒã‚¤ã‚¹å´ã¸wifiçµŒç”±ã§ã®adbå¾…ã¡å—ã‘ã‚’è¡Œã†ã‚ˆã†ã«æŒ‡ç¤ºã™ã‚‹
 		if (m_config.autoWifiConnect && m_bFirstDeviceCheck || (prevDeviceListCount != m_deviceList.size())) {
 			m_bFirstDeviceCheck = false;
 			const int acceptPort = 5555;
 
-			// ƒfƒoƒCƒX‚Ö‘Ò‚¿ó‚¯—v‹‚·‚é
+			// ãƒ‡ãƒã‚¤ã‚¹ã¸å¾…ã¡å—ã‘è¦æ±‚ã™ã‚‹
 			for (const std::string& device : deviceList) {
 				if (connectedDeviceList.find(device) != connectedDeviceList.end()) {
 					continue;
@@ -462,7 +578,7 @@ void CMainDlg::_AdbTrackDeviceInit()
 				std::string wlanText = _SendCommonAdbCommand("DeviceIPAddress", device);
 				auto ipBeginPos = wlanText.find("192.168.");
 				if (ipBeginPos == std::string::npos) {
-					PUTLOG(L"ƒfƒoƒCƒX‚ªƒ[ƒJƒ‹wifi‚ÉÚ‘±‚³‚ê‚Ä‚¢‚Ü‚¹‚ñ: %s", UTF16fromUTF8(device).c_str());
+					PUTLOG(L"ãƒ‡ãƒã‚¤ã‚¹ãŒãƒ­ãƒ¼ã‚«ãƒ«wifiã«æ¥ç¶šã•ã‚Œã¦ã„ã¾ã›ã‚“: %s", UTF16fromUTF8(device).c_str());
 					continue;
 				}
 				auto slashPos = wlanText.find("/", ipBeginPos);
@@ -473,24 +589,24 @@ void CMainDlg::_AdbTrackDeviceInit()
 				
 				std::string deviceIPAddress = wlanText.substr(ipBeginPos, slashPos - ipBeginPos);
 				std::string deviceIPPort = deviceIPAddress + ":" + std::to_string(acceptPort);
-				// ‘Ò‚¿ó‚¯
+				// å¾…ã¡å—ã‘
 				_SendADBCommand(L"tcpip " + std::to_wstring(acceptPort), device);
-				// Ú‘±
+				// æ¥ç¶š
 				StartProcess(GetAdbPath(), L" connect " + UTF16fromUTF8(deviceIPPort));
 				PUTLOG(L"adb connect %s", UTF16fromUTF8(deviceIPPort).c_str());
 			}
 		}
 	});
 	
-	{	// I—¹‚ÉAƒfƒoƒCƒX‚Æadb‚Æ‚ÌÚ‘±‚ªØ‚ê‚È‚¢‚æ‚¤‚É‚·‚é
+	{	// çµ‚äº†æ™‚ã«ã€ãƒ‡ãƒã‚¤ã‚¹ã¨adbã¨ã®æ¥ç¶šãŒåˆ‡ã‚Œãªã„ã‚ˆã†ã«ã™ã‚‹
 		extern HANDLE g_hJob;
-		// ƒnƒ“ƒhƒ‹‚ªŒp³‚³‚ê‚È‚¢‚æ‚¤‚É‚·‚é
+		// ãƒãƒ³ãƒ‰ãƒ«ãŒç¶™æ‰¿ã•ã‚Œãªã„ã‚ˆã†ã«ã™ã‚‹
 		if (!SetHandleInformation(g_hJob, HANDLE_FLAG_INHERIT, 0)) {
 			ATLASSERT(FALSE);
 		}
 		::ShellExecute(NULL, NULL, GetAdbPath().c_str(), L" start-server", NULL, SW_HIDE);
 
-		// ƒnƒ“ƒhƒ‹‚ªŒp³‚³‚ê‚é‚æ‚¤‚É‚·‚é
+		// ãƒãƒ³ãƒ‰ãƒ«ãŒç¶™æ‰¿ã•ã‚Œã‚‹ã‚ˆã†ã«ã™ã‚‹
 		if (!SetHandleInformation(g_hJob, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT)) {
 			ATLASSERT(FALSE);
 		}
@@ -498,7 +614,7 @@ void CMainDlg::_AdbTrackDeviceInit()
 
 	bool success = m_adbTrackDevicesProcess.StartProcess(GetAdbPath().wstring(), L" track-devices", false);
 	if (!success) {
-		PUTLOG(L"adb track-devices‚É¸”s");
+		PUTLOG(L"adb track-devicesã«å¤±æ•—");
 		ATLASSERT(FALSE);
 	}
 }
@@ -517,14 +633,40 @@ bool CMainDlg::_ScrcpyStart()
 		}
 		PUTLOG(L"[scrcpy] %s", UTF16fromUTF8(log).c_str());
 
-		if (log.find("Killing the server") != std::string::npos) {
-			// scrcpy‚Ì‰æ–Ê‚ª•Â‚¶‚ç‚ê‚½
+		if (log.find("Killing the server") != std::string::npos || 
+			log.find("Device disconnected") != std::string::npos) 
+		{
+			// scrcpyã®ç”»é¢ãŒé–‰ã˜ã‚‰ã‚ŒãŸ
 			if (m_checkSSC.GetCheck() == BST_CHECKED) {
 				m_checkSSC.SetCheck(BST_UNCHECKED);
-				BOOL bHandled = FALSE;
-				OnScreenSoundCopy(0, 0, NULL, bHandled);
+				PostMessage(WM_COMMAND, IDC_CHECK_SCREENSOUNDCOPY);
+			}
+		} else if (log.find("New texture") != std::string::npos) {
+			//  INFO: New texture: 1280x800
+			std::string strSize = log.substr(19);
+			auto xPos = strSize.find("x");
+			ATLASSERT(xPos != std::string::npos);
+			std::string strWidth = strSize.substr(0, xPos);
+			std::string strHeight = strSize.substr(xPos + 1);
+			int width = std::stoi(strWidth);
+			int height = std::stoi(strHeight);
+			if (width > height) {
+				// æ¨ªç”»é¢ã«ãªã£ãŸã¨ã
+				CWindow hwndScrcpy = _FindScrcpyWindow();
+				if (!hwndScrcpy) {
+					PUTLOG(L"Scrcpyã®ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ãŒè¦‹ã¤ã‹ã‚Šã¾ã›ã‚“...");
+					return;
+				}
+				ATLASSERT(m_sharedMemoryData);
+				if (m_sharedMemoryData) {
+					// Ctrl+Gã‚’å®Ÿè¡Œã™ã‚‹
+					PUTLOG(L"Resize window to 1:1 (pixel-perfect)");
+					m_sharedMemoryData->doEventFlag = true;
+					hwndScrcpy.SendMessageW(WM_MOUSEMOVE, 0, 0);
+				}
 			}
 		}
+
 		});
 
 	std::wstring scrcpyCommandLine = _BuildScrcpyCommandLine();
@@ -532,7 +674,7 @@ bool CMainDlg::_ScrcpyStart()
 	PUTLOG(L"scrcpyCommandLine: %s", scrcpyCommandLine.c_str());
 	bool success = m_scrcpyProcess.StartProcess(scrcpyPath.wstring(), scrcpyCommandLine);
 	if (!success) {
-		PUTLOG(L"scrcpyƒvƒƒZƒX‚ÌÀs‚É¸”s...");
+		PUTLOG(L"scrcpyãƒ—ãƒ­ã‚»ã‚¹ã®å®Ÿè¡Œã«å¤±æ•—...");
 		return false;
 	}
 
@@ -551,21 +693,21 @@ bool CMainDlg::_ScrcpyStart()
 		);
 		if (!m_sharedMemFilemap) {
 			ATLASSERT(FALSE);
-			PUTLOG(L"‹¤—Lƒƒ‚ƒŠ‚Ìì¬‚É¸”s");
+			PUTLOG(L"å…±æœ‰ãƒ¡ãƒ¢ãƒªã®ä½œæˆã«å¤±æ•—");
 			return false;
 		} else {
-			uint32_t* pDelayFrameCount = (uint32_t*)::MapViewOfFile(m_sharedMemFilemap, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(uint32_t));
-			ATLASSERT(pDelayFrameCount);
-			*pDelayFrameCount = m_config.delayFrameCount;	// İ’è‘‚«‚İ
-			::UnmapViewOfFile((LPCVOID)pDelayFrameCount);
+			m_sharedMemoryData = (SharedMemoryData*)::MapViewOfFile(m_sharedMemFilemap, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(SharedMemoryData));
+			ATLASSERT(m_sharedMemoryData);
+			m_sharedMemoryData->delayFrameCount = m_config.delayFrameCount;	// è¨­å®šæ›¸ãè¾¼ã¿
+			m_sharedMemoryData->doEventFlag = false;
 		}
 
-		// Dll injectÀs
+		// Dll injectå®Ÿè¡Œ
 		BOOL ret = FALSE;
 		auto delayDllPath = GetExeDirectory() / L"delayFrame.dll";
 		if (!fs::exists(delayDllPath)) {
 			ATLASSERT(FALSE);
-			PUTLOG(L"delayFrame.dll‚ª‘¶İ‚µ‚Ü‚¹‚ñ...");
+			PUTLOG(L"delayFrame.dllãŒå­˜åœ¨ã—ã¾ã›ã‚“...");
 			return false;
 		}
 		auto dllPath = delayDllPath.string();
@@ -585,7 +727,7 @@ bool CMainDlg::_ScrcpyStart()
 			return false;
 		}
 
-		// ƒŠƒ‚[ƒgƒvƒƒZƒX‚Ö“Ç‚İ‚Ü‚¹‚½‚¢DLL‚ÌƒpƒX‚ğ‘‚«‚Ş
+		// ãƒªãƒ¢ãƒ¼ãƒˆãƒ—ãƒ­ã‚»ã‚¹ã¸èª­ã¿è¾¼ã¾ã›ãŸã„DLLã®ãƒ‘ã‚¹ã‚’æ›¸ãè¾¼ã‚€
 		ret = ::WriteProcessMemory(
 			proc,
 			remoteLibPath,
@@ -598,7 +740,7 @@ bool CMainDlg::_ScrcpyStart()
 			return false;
 		}
 
-		// ©ƒvƒƒZƒX“à‚ÌLoadlibrary‚Ö‚ÌƒAƒhƒŒƒX‚ğ‚»‚Ì‚Ü‚Üˆø”‚Æ‚µ‚Ä“n‚· 
+		// è‡ªãƒ—ãƒ­ã‚»ã‚¹å†…ã®Loadlibraryã¸ã®ã‚¢ãƒ‰ãƒ¬ã‚¹ã‚’ãã®ã¾ã¾å¼•æ•°ã¨ã—ã¦æ¸¡ã™ 
 		HANDLE hRemoteThread = ::CreateRemoteThread(
 			proc,
 			NULL,
@@ -616,7 +758,7 @@ bool CMainDlg::_ScrcpyStart()
 	}
 
 #if 0
-	// scrcpy‚ÌƒRƒ“ƒ\[ƒ‹ƒEƒBƒ“ƒhƒE‚ğ”ñ•\¦‚É‚·‚é
+	// scrcpyã®ã‚³ãƒ³ã‚½ãƒ¼ãƒ«ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‚’éè¡¨ç¤ºã«ã™ã‚‹
 	enum { kMaxRetryCount = 10 };
 	for (int i = 0; i < kMaxRetryCount; ++i) {
 		HWND hwndScrcpyConsole = ::FindWindow(L"ConsoleWindowClass", scrcpyPath.c_str());
@@ -637,11 +779,18 @@ void CMainDlg::_SndcpyAutoPermission(bool bManual /*= false*/)
 
 	auto funcSSCButtonEnable = [this](bool success) {
 		m_checkSSC.EnableWindow(TRUE);
-		m_checkSSC.SetWindowTextW(success ? L"Streaming..." : L"Screen Sound Copy");
+		m_checkSSC.SetWindowTextW(success ? L"Streaming..." : L"failed...");
+		if (!success) {
+			m_checkSSC.SetCheck(BST_UNCHECKED);
+			PostMessage(WM_COMMAND, IDC_CHECK_SCREENSOUNDCOPY);
+		}
 	};
 
 	auto funcStartSndcpy = [=]() -> bool {
-		PUTLOG(L"sndcpy‹N“®");
+		// sndcpy uninstall
+		_SendADBCommand(L" uninstall com.rom1v.sndcpy");
+
+		PUTLOG(L"sndcpyèµ·å‹•");
 		auto sndcpyPath = GetExeDirectory() / L"sndcpy" / L"sndcpy_start.bat";
 
 		WCHAR systemFolder[MAX_PATH] = L"";
@@ -656,33 +805,37 @@ void CMainDlg::_SndcpyAutoPermission(bool bManual /*= false*/)
 		StartProcessGetStdOut(cmdPath, commandLine, stdoutText);
 		PUTLOG(L"[sndcpy.bat] %s", UTF16fromUTF8(stdoutText).c_str());
 
-		HWND hwnd_scrcpy = _FindScrcpyWindow();
+		CWindow hwnd_scrcpy = _FindScrcpyWindow();
 		if (!hwnd_scrcpy) {
-			PUTLOG(L"scrcpy‚Ì‰æ–Ê‚ªŒ©‚Â‚©‚è‚Ü‚¹‚ñ");
+			PUTLOG(L"scrcpyã®ç”»é¢ãŒè¦‹ã¤ã‹ã‚Šã¾ã›ã‚“");
 			return false;
 		}
 
+		if (m_config.noResize) {
+			hwnd_scrcpy.ModifyStyle(WS_THICKFRAME, 0);	// ã‚µã‚¤ã‚ºå¤‰æ›´ç¦æ­¢ã«ã™ã‚‹
+		}
+
 		if (bManual) {
-			int ret = MessageBox(L"ƒfƒoƒCƒX‘¤‚Åsndcpy‚Ì[¡‚·‚®ŠJn]‚ğ‰Ÿ‚µ‚½Œã‚É[OK]‚ğ‘I‘ğ‚µ‚Ä‚­‚¾‚³‚¢B", L"scrsndcpy", MB_OKCANCEL);
+			int ret = MessageBox(L"ãƒ‡ãƒã‚¤ã‚¹å´ã§sndcpyã®[ä»Šã™ãé–‹å§‹]ã‚’æŠ¼ã—ãŸå¾Œã«[OK]ã‚’é¸æŠã—ã¦ãã ã•ã„ã€‚", L"scrsndcpy", MB_OKCANCEL);
 			if (ret == IDOK) {
 				_DoSoundStreaming();
 				return true;
 			}
 			return false;
 		} else {
-			::Sleep(500);	// ƒ_ƒCƒAƒƒO‚ªo‚Ä‚­‚é‚Ü‚Å‘Ò‚Â
-			PUTLOG(L"sndcpyƒ_ƒCƒAƒƒOŠm”F’†...");
+			::Sleep(100);	// ãƒ€ã‚¤ã‚¢ãƒ­ã‚°ãŒå‡ºã¦ãã‚‹ã¾ã§å¾…ã¤
+			PUTLOG(L"sndcpyãƒ€ã‚¤ã‚¢ãƒ­ã‚°ç¢ºèªä¸­...");
 
 			const std::string searchText = m_jsonCommon["Common"]["Sndcpy"]["AuthorizationGrep"];
 			enum { kMaxRetryCount = 10 };
 			for (int i = 0; i < kMaxRetryCount; ++i) {
 				std::string adbRet = _SendCommonAdbCommand("IsSndcpyAuthorization");
 				if (adbRet.find(searchText) != std::string::npos) {
-					PUTLOG(L"”FØƒ_ƒCƒAƒƒO”­Œ©A©“®”FØ‚µ‚Ü‚·");
+					PUTLOG(L"èªè¨¼ãƒ€ã‚¤ã‚¢ãƒ­ã‚°ç™ºè¦‹ã€è‡ªå‹•èªè¨¼ã—ã¾ã™");
 					_SendADBCommand(L"shell input keyevent DPAD_RIGHT");
 					_SendADBCommand(L"shell input keyevent DPAD_RIGHT");
 					_SendADBCommand(L"shell input keyevent ENTER");
-					PUTLOG(L"”FØ‚µ‚Ü‚µ‚½");
+					PUTLOG(L"èªè¨¼ã—ã¾ã—ãŸ");
 
 					::Sleep(500);
 					_DoSoundStreaming();
@@ -693,25 +846,25 @@ void CMainDlg::_SndcpyAutoPermission(bool bManual /*= false*/)
 				::Sleep(300);
 			}
 		}
-		PUTLOG(L"sndcpy‚Ìƒ_ƒCƒAƒƒO‚ªŠm”F‚Å‚«‚Ü‚¹‚ñ‚Å‚µ‚½...");
+		PUTLOG(L"sndcpyã®ãƒ€ã‚¤ã‚¢ãƒ­ã‚°ãŒç¢ºèªã§ãã¾ã›ã‚“ã§ã—ãŸ...");
 		return false;
 	};
 
 	std::thread([=]()
 	{
 		std::string androidVersion = _SendCommonAdbCommand("AndroidVersion");
-		if (androidVersion.length()) {
+		if (androidVersion.length() && std::isdigit(androidVersion.front())) {
 			enum { kSndcpyMinRequreAndroidVersion = 10 };
 			const int version = std::stoi(androidVersion);
 			if (version < kSndcpyMinRequreAndroidVersion) {
-				PUTLOG(L"Android‚Ìƒo[ƒWƒ‡ƒ“‚ªŒÃ‚¢‚½‚ßsndcpy‚ÍÀs‚³‚ê‚Ü‚¹‚ñ\nAndroid %d", version);
+				PUTLOG(L"Androidã®ãƒãƒ¼ã‚¸ãƒ§ãƒ³ãŒå¤ã„ãŸã‚sndcpyã¯å®Ÿè¡Œã•ã‚Œã¾ã›ã‚“\nAndroid %d", version);
 				funcSSCButtonEnable(true);
 				return;
 			} else {
 				PUTLOG(L"Android %d", version);
 			}
 		} else {
-			PUTLOG(L"Android‚Ìƒo[ƒWƒ‡ƒ“‚ª•s–¾‚Å‚·");
+			PUTLOG(L"Androidã®ãƒãƒ¼ã‚¸ãƒ§ãƒ³ãŒä¸æ˜ã§ã™");
 		}
 
 		enum { kMaxSndcpyRetryCount = 2 };
@@ -720,6 +873,12 @@ void CMainDlg::_SndcpyAutoPermission(bool bManual /*= false*/)
 				funcSSCButtonEnable(true);
 				return;	// success!
 			}
+
+			PUTLOG(L"Retry: %d", k);
+			::ShellExecute(NULL, NULL, GetAdbPath().c_str(), L" kill-server", NULL, SW_HIDE);
+			::Sleep(1000);
+			::ShellExecute(NULL, NULL, GetAdbPath().c_str(), L" start-server", NULL, SW_HIDE);
+			::Sleep(1000);
 		}
 		funcSSCButtonEnable(false);	// failed...
 	}).detach();
@@ -748,7 +907,7 @@ void CMainDlg::_DoSoundStreaming()
 				m_checkSSC.SetWindowTextW(L"Streaming...");
 			};
 
-			PUTLOG(L"sndcpy‚ÉÚ‘±‚µ‚Ü‚·");
+			PUTLOG(L"sndcpyã«æ¥ç¶šã—ã¾ã™");
 
 			IPAddress addr;
 			addr.Set("127.0.0.1", "28200");
@@ -759,24 +918,75 @@ void CMainDlg::_DoSoundStreaming()
 				if (!sock.Connect(addr, valid)) {
 					::Sleep(500);
 				} else {
-					PUTLOG(L"Ú‘±¬Œ÷");
+					PUTLOG(L"æ¥ç¶šæˆåŠŸ");
 					break;
 				}
 			}
 			if (!sock.IsConnected()) {
-				PUTLOG(L"Ú‘±‚É¸”s‚µ‚Ü‚µ‚½...");
+				PUTLOG(L"æ¥ç¶šã«å¤±æ•—ã—ã¾ã—ãŸ...");
 				funcSSCButtonEnable();
 				return;
 			}
 
-			m_wavePlay = std::make_unique<WavePlay>();
-			m_wavePlay->SetMainDlgHWND(m_hWnd);
-			m_wavePlay->Init(m_config.bufferMultiple, m_config.maxBufferSampleCount);
-			const int bufferSize = m_wavePlay->GetBufferBytes();
+			auto func_wavPlayInit = [this]() {
+				m_wavePlay = std::make_unique<WavePlay>();
+				m_wavePlay->SetMainDlgHWND(m_hWnd);
+				m_wavePlay->Init(m_config.bufferMultiple, m_config.maxBufferSampleCount);
 
-			m_wavePlay->SetVolume(kMaxVolume - m_sliderVolume.GetPos());
+				m_wavePlay->SetVolume(kMaxVolume - m_sliderVolume.GetPos());
+			};
+
+			using namespace std::chrono;
+			auto prevTime = steady_clock::now();
+
+			auto funcMutePlayStop = [&](const char* buffer, int recvSize) -> bool {
+				//enum { kMaxCount = 32 };
+				//int i64size = min(recvSize / 8, kMaxCount);
+				int i64size = recvSize / 8;
+				const std::int64_t* bufferBegin = reinterpret_cast<const std::int64_t*>(buffer);
+				//Utility::timer timer;
+				bool bMute = std::all_of(bufferBegin, bufferBegin + i64size, [](std::int64_t c) { return c == 0; });
+				//bool bMute = std::all_of(buffer, buffer + recvSize, [](char c) { return c == 0; });
+				//INFO_LOG << L"all_of: " << timer.format();
+				if (bMute) {
+					if (!m_wavePlay) {
+						return true;	// å†ç”Ÿã‚¹ãƒˆãƒƒãƒ—
+					}
+
+					// ä¸€å®šæ™‚é–“ãƒŸãƒ¥ãƒ¼ãƒˆãŒç¶šãã€ã‹ã¤ã€ç”»é¢ãŒã‚ªãƒ•ã®æ™‚ã«å†ç”Ÿã‚’æ­¢ã‚ã‚‹
+					enum { kDisplayOffConfirmMinutes = 1 };
+					using namespace std::chrono;
+					auto nowTime = steady_clock::now();
+					auto elapsed = duration_cast<minutes>(nowTime - prevTime).count();
+					if (kDisplayOffConfirmMinutes <= elapsed) {
+						prevTime = nowTime;
+
+						std::string stdoutText = _SendCommonAdbCommand("DumpsysPower");
+						std::regex rx(R"(Display Power: state=(ON|OFF))");
+						std::smatch result;
+						if (std::regex_search(stdoutText, result, rx)) {
+							std::string displayState = result[1].str();
+							if (displayState == "OFF") {
+								m_wavePlay.reset();	
+								m_wavePlayInfo.SetWindowText(L"Pausing playback");
+								return true;	// å†ç”Ÿã‚¹ãƒˆãƒƒãƒ—
+							}
+						}
+					}
+				} else {
+					// éŸ³ãŒå‡ºã¦ã„ã‚‹
+					if (!m_wavePlay) {
+						// å†ç”Ÿã‚’é–‹å§‹ã™ã‚‹
+						func_wavPlayInit();
+					}
+				}
+				return false;	// å†ç”Ÿã‚’æ­¢ã‚ãªã„
+			};
+
+			func_wavPlayInit();
 
 			sock.SetBlocking(true);
+			const int bufferSize = m_wavePlay->GetBufferBytes();
 			auto buffer = std::make_unique<char[]>(bufferSize);
 
 			enum { kDiscardCount = 2 };
@@ -784,7 +994,7 @@ void CMainDlg::_DoSoundStreaming()
 			while (std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - timebegin).count() < kDiscardCount) {
 				int recvSize = sock.Read(buffer.get(), bufferSize);
 			}
-			PUTLOG(L"‰¹º‚ÌƒXƒgƒŠ[ƒ~ƒ“ƒOÄ¶‚ğŠJn‚µ‚Ü‚·");
+			PUTLOG(L"éŸ³å£°ã®ã‚¹ãƒˆãƒªãƒ¼ãƒŸãƒ³ã‚°å†ç”Ÿã‚’é–‹å§‹ã—ã¾ã™");
 			funcSSCButtonEnable();
 
 			std::string bufferMain;
@@ -798,6 +1008,9 @@ void CMainDlg::_DoSoundStreaming()
 					ERROR_LOG << L"Socket Error";
 					PUTLOG(L"Socket Error");
 					break;
+				}
+				if (funcMutePlayStop(buffer.get(), recvSize)) {
+					continue;	// éŸ³ã‚’å†ç”Ÿã—ãªã„
 				}
 #if 0
 				if (::GetAsyncKeyState(VK_MENU) < 0 && ::GetAsyncKeyState(VK_SHIFT)) {
@@ -824,8 +1037,11 @@ void CMainDlg::_StopStreaming()
 				::GetClientRect(hwnd_scrcpy , &rcClient);
 				CWindow(hwnd_scrcpy).MapWindowPoints(NULL, &rcClient);
 
-				m_scrcpyWidowPos.x = rcClient.left;
-				m_scrcpyWidowPos.y = rcClient.top;
+				if (::GetAsyncKeyState(VK_CONTROL) < 0) {
+					m_scrcpyWidowPos.x = rcClient.left;
+					m_scrcpyWidowPos.y = rcClient.top;
+					PUTLOG(L"Save scrcpy window pos - x: %d y: %d", m_scrcpyWidowPos.x, m_scrcpyWidowPos.y);
+				}
 			}
 
 			if (m_config.deviceMuteOnStart) {
@@ -834,10 +1050,20 @@ void CMainDlg::_StopStreaming()
 
 			::PostMessage(hwnd_scrcpy, WM_CLOSE, 0, 0);
 		} else {
-			// scrcpy–{‘Ì‚Ì•Â‚¶‚éƒ{ƒ^ƒ“‚ª‰Ÿ‚³‚ê‚½ê‡
+			// scrcpyæœ¬ä½“ã®é–‰ã˜ã‚‹ãƒœã‚¿ãƒ³ãŒæŠ¼ã•ã‚ŒãŸå ´åˆ
 		}
+
+		if (m_config.deviceMuteOnStart) {
+			_SendCommonAdbCommand("UnMute");
+		}
+		// sndcpy uninstall
+		_SendADBCommand(L" uninstall com.rom1v.sndcpy");
+
+		m_scrcpyProcess.Terminate();
 	}
 	if (m_sharedMemFilemap) {
+		::UnmapViewOfFile((LPCVOID)m_sharedMemoryData);
+		m_sharedMemoryData = nullptr;
 		m_sharedMemFilemap.Close();
 	}
 
@@ -866,6 +1092,9 @@ std::wstring CMainDlg::_BuildScrcpyCommandLine()
 	if (m_scrcpyWidowPos.x != -1 && m_scrcpyWidowPos.y != -1) {
 		commandLine += L" --window-x " + std::to_wstring(m_scrcpyWidowPos.x) 
 					 + L" --window-y " + std::to_wstring(m_scrcpyWidowPos.y);
+	}
+	if (m_config.videoBuffer_ms > 0) {
+		commandLine += L" --display-buffer=" + std::to_wstring(m_config.videoBuffer_ms);
 	}
 
 	return commandLine;

@@ -34,6 +34,7 @@ bool WavePlay::Init(int bufferMultiple, int maxBufferSampleCount)
 	ATLASSERT(1 <= bufferMultiple && bufferMultiple <= 10);
 	ATLASSERT(0 <= maxBufferSampleCount && bufferMultiple <= 48000);
 	m_maxBufferSampleCount = maxBufferSampleCount;
+	m_exit = false;
 
 	try {
 		HRESULT hr = S_FALSE;
@@ -95,6 +96,16 @@ bool WavePlay::Init(int bufferMultiple, int maxBufferSampleCount)
 		if (FAILED(hr)) {
 			throw std::runtime_error("m_spAudioClient->IsFormatSupported failed");
 		}
+		if (pwfm) {
+			INFO_LOG << L"ClosestWaveFormat: \n"
+				<< L"cbSize: " << pwfm->cbSize << L"\n"
+				<< L"wFormatTag: " << pwfm->wFormatTag << L"\n"
+				<< L"nChannels: " << pwfm->nChannels << L"\n"
+				<< L"nSamplesPerSec: " << pwfm->nSamplesPerSec << L"\n"
+				<< L"wBitsPerSample: " << pwfm->wBitsPerSample << L"\n"
+				<< L"nBlockAlign: " << pwfm->nBlockAlign << L"\n"
+				<< L"nAvgBytesPerSec: " << pwfm->nAvgBytesPerSec << L"\n";
+		}
 #if 0
 		WAVEFORMATEX* pwfx = NULL;
 		hr = m_spAudioClient->GetMixFormat(&pwfx);
@@ -111,7 +122,9 @@ bool WavePlay::Init(int bufferMultiple, int maxBufferSampleCount)
 		UINT32 maxPeriodInFrames;
 		hr = m_spAudioClient->GetSharedModeEnginePeriod(&wf.Format, &defaultPeriodInFrames, &fundamentalPeriodInFrames, &minPeriodInFrames, &maxPeriodInFrames);
 		if (FAILED(hr)) {
-			throw std::runtime_error("m_spAudioClient->GetSharedModeEnginePeriod failed");
+			//throw std::runtime_error("m_spAudioClient->GetSharedModeEnginePeriod failed");
+			WARN_LOG << L"m_spAudioClient->GetSharedModeEnginePeriod failed : " << hr;
+			defaultPeriodInFrames = 0;
 		}
 		// 5. Initializing a client with a specific format (if the format needs to be different than the default format)
 		//AudioClientProperties audioProps = { 0 };
@@ -137,7 +150,41 @@ bool WavePlay::Init(int bufferMultiple, int maxBufferSampleCount)
 			&wf.Format,
 			nullptr); // audio session GUID
 		if (FAILED(hr)) {
-			throw std::runtime_error("m_spAudioClient->InitializeSharedAudioStream failed");
+			//throw std::runtime_error("m_spAudioClient->InitializeSharedAudioStream failed");
+			WARN_LOG << L"m_spAudioClient->InitializeSharedAudioStream failed : " << hr;
+
+			WAVEFORMATEX* pwfx = nullptr;
+			hr = m_spAudioClient->GetMixFormat(&pwfx);
+			if (FAILED(hr)) {
+				throw std::runtime_error("m_spAudioClient->GetMixFormat failed");
+			}
+			REFERENCE_TIME minimumDevicePeriod = 0;
+			hr = m_spAudioClient->GetDevicePeriod(nullptr, &minimumDevicePeriod);
+			if (FAILED(hr)) {
+				throw std::runtime_error("m_spAudioClient->GetDevicePeriod failed");
+			}
+			INFO_LOG << L"minimumDevicePeriod: " << minimumDevicePeriod;
+
+			WAVEFORMATEX wave_format = {};
+			//wave_format.cbSize = sizeof(WAVEFORMATEX);	// 指定してはいけない
+			wave_format.wFormatTag = WAVE_FORMAT_PCM;
+			wave_format.nChannels = 2;
+			wave_format.nSamplesPerSec = 48000;
+			wave_format.wBitsPerSample = 16;
+			wave_format.nBlockAlign = wave_format.nChannels * wave_format.wBitsPerSample / 8;
+			wave_format.nAvgBytesPerSec = wave_format.nSamplesPerSec * wave_format.nBlockAlign;
+
+			hr = m_spAudioClient->Initialize(
+				AUDCLNT_SHAREMODE_SHARED,
+				AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
+				minimumDevicePeriod,
+				0,
+				&wave_format,
+				nullptr);
+			if (FAILED(hr)) {
+				WARN_LOG << L"m_spAudioClient->Initialize failed: " << hr;
+				throw std::runtime_error("m_spAudioClient->Initialize failed");
+			}
 		}
 
 		// レンダラーの取得
@@ -267,6 +314,10 @@ void WavePlay::WriteBuffer(const BYTE* buffer, int bufferSize)
 void WavePlay::SetVolume(int volume)
 {
 	ATLASSERT(0 <= volume && volume <= 100);
+	if (!m_spSimpleAudioVolume) {
+		return;
+	}
+
 	float fLevel = volume / 100.0f;
 	if (fLevel < 0.0) {
 		fLevel = 0;
@@ -318,7 +369,7 @@ void WavePlay::_BufferConsume()
 				}
 				// Event handle timed out after a 2-second wait.
 				ERROR_LOG << L"WaitForSingleObject timeout";
-				ATLASSERT(FALSE);
+				//ATLASSERT(FALSE);
 				return;
 			}
 			// See how much buffer space is available.
@@ -352,11 +403,19 @@ void WavePlay::_BufferConsume()
 			// Grab all the available space in the shared buffer.
 			BYTE* pData = nullptr;
 			hr = m_spRenderClient->GetBuffer(bufferFrameSize, &pData);
-			ATLASSERT(SUCCEEDED(hr));
+			//ATLASSERT(SUCCEEDED(hr));
+			if (FAILED(hr)) {
+				ERROR_LOG << L"m_spRenderClient->GetBuffer failed : " << hr;
+				return;
+			}
 
 			::memcpy_s(pData, availableBufferSize, bufferBegin, bufferSize);
 			hr = m_spRenderClient->ReleaseBuffer(bufferFrameSize, 0);
-			ATLASSERT(SUCCEEDED(hr));
+			if (FAILED(hr)) {
+				ERROR_LOG << L"m_spRenderClient->ReleaseBuffer failed : " << hr;
+				return;
+			}
+			//ATLASSERT(SUCCEEDED(hr));
 
 			playSample += bufferFrameSize;
 
