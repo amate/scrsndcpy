@@ -177,7 +177,7 @@ LRESULT CMainDlg::OnInitDialog(UINT, WPARAM, LPARAM, BOOL&)
 				m_scrcpyWidowPos.x = jsonSetting["ScrcpyWindow"].value("x", -1);
 				m_scrcpyWidowPos.y = jsonSetting["ScrcpyWindow"].value("y", -1);
 			} else {
-				m_scrcpyWidowPos = CPoint(-1, -1);
+				m_scrcpyWidowPos = CPoint(100, 100);
 			}
 		}
 		{
@@ -279,8 +279,7 @@ BOOL CMainDlg::OnPowerBroadcast(DWORD dwPowerEvent, DWORD_PTR dwData)
 		if (m_scrcpyProcess.IsRunning()) {
 			m_runningBeforeSleep = true;
 
-			BOOL b = TRUE;
-			//OnScreenSoundCopy(0, 0, NULL, b);
+			_StopStreaming();
 		}
 		break;
 
@@ -303,6 +302,10 @@ void CMainDlg::OnTimer(UINT_PTR nIDEvent)
 	if (nIDEvent == kSleepResumeTimerId) {
 		KillTimer(kSleepResumeTimerId);
 		PUTLOG(L"Sleep Resume - Screen Sound Copy");
+		if (m_scrcpyProcess.IsRunning()) {
+			PUTLOG(L"m_scrcpyProcess.IsRunning() == true");
+			return;
+		}
 
 		ATLASSERT(m_checkSSC.GetCheck() == BST_UNCHECKED);
 		ATLASSERT(!m_scrcpyProcess.IsRunning());
@@ -313,6 +316,10 @@ void CMainDlg::OnTimer(UINT_PTR nIDEvent)
 	} else if (nIDEvent == kAutoRunTimerId) {
 		KillTimer(kAutoRunTimerId);
 		PUTLOG(L"AutoRunTimer");
+		if (m_scrcpyProcess.IsRunning()) {
+			PUTLOG(L"m_scrcpyProcess.IsRunning() == true");
+			return;
+		}
 
 		ATLASSERT(m_checkSSC.GetCheck() == BST_UNCHECKED);
 		ATLASSERT(!m_scrcpyProcess.IsRunning());
@@ -359,10 +366,7 @@ LRESULT CMainDlg::OnAppAbout(WORD, WORD, HWND, BOOL&)
 LRESULT CMainDlg::OnScreenSoundCopy(WORD, WORD wID, HWND, BOOL&)
 {
 	if (m_checkSSC.GetCheck() == BST_UNCHECKED) {
-		PUTLOG(L"ストリーミングを停止します");
 		_StopStreaming();
-		m_checkSSC.SetWindowTextW(L"Screen Sound Copy");
-		m_currentDeviceSerial.clear();
 
 	} else {
 
@@ -378,10 +382,6 @@ LRESULT CMainDlg::OnScreenSoundCopy(WORD, WORD wID, HWND, BOOL&)
 		std::wstring deviceSerial = UTF16fromUTF8(m_deviceList[index]);
 		m_currentDeviceSerial = deviceSerial;
 
-		if (m_config.deviceMuteOnStart) {
-			_SendCommonAdbCommand("Mute");
-		}
-
 		// scrcpy
 		bool success = _ScrcpyStart();
 		if (!success) {
@@ -396,7 +396,10 @@ LRESULT CMainDlg::OnScreenSoundCopy(WORD, WORD wID, HWND, BOOL&)
 				PUTLOG(L"自動ログインします");
 				// ロック解除画面へ
 				_SendADBCommand(L"shell input keyevent MENU");
+				::Sleep(200);
 				_SendADBCommand(L"shell input keyevent MENU");
+				::Sleep(200);
+
 				// パスワード入力
 				_SendADBCommand(L"shell input text " + UTF16fromUTF8(m_config.loginPassword));
 				PUTLOG(L"自動ログイン完了");
@@ -405,6 +408,10 @@ LRESULT CMainDlg::OnScreenSoundCopy(WORD, WORD wID, HWND, BOOL&)
 	
 		// sndcpy
 		_SndcpyAutoPermission();
+
+		if (m_config.deviceMuteOnStart) {
+			_SendCommonAdbCommand("Mute");
+		}
 	}
 	return 0;
 }
@@ -604,7 +611,10 @@ void CMainDlg::_AdbTrackDeviceInit()
 		if (!SetHandleInformation(g_hJob, HANDLE_FLAG_INHERIT, 0)) {
 			ATLASSERT(FALSE);
 		}
-		::ShellExecute(NULL, NULL, GetAdbPath().c_str(), L" start-server", NULL, SW_HIDE);
+		//::ShellExecute(NULL, NULL, GetAdbPath().c_str(), L" kill-server", NULL, SW_HIDE);
+		//::Sleep(1000);
+
+		//::ShellExecute(NULL, NULL, GetAdbPath().c_str(), L" start-server", NULL, SW_HIDE);
 
 		// ハンドルが継承されるようにする
 		if (!SetHandleInformation(g_hJob, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT)) {
@@ -774,9 +784,6 @@ bool CMainDlg::_ScrcpyStart()
 
 void CMainDlg::_SndcpyAutoPermission(bool bManual /*= false*/)
 {
-	m_checkSSC.EnableWindow(FALSE);
-	m_checkSSC.SetWindowTextW(L"Prepareing...");
-
 	auto funcSSCButtonEnable = [this](bool success) {
 		m_checkSSC.EnableWindow(TRUE);
 		m_checkSSC.SetWindowTextW(success ? L"Streaming..." : L"failed...");
@@ -786,9 +793,51 @@ void CMainDlg::_SndcpyAutoPermission(bool bManual /*= false*/)
 		}
 	};
 
-	auto funcStartSndcpy = [=]() -> bool {
+	// Android version check
+	m_currentDeviceAndroidVersion = 0;
+	std::string androidVersion = _SendCommonAdbCommand("AndroidVersion");
+	if (androidVersion.length() && std::isdigit(androidVersion.front())) {
+		enum { kSndcpyMinRequreAndroidVersion = 10 };
+		const int version = std::stoi(androidVersion);
+		m_currentDeviceAndroidVersion = version;
+		if (version < kSndcpyMinRequreAndroidVersion) {
+			PUTLOG(L"Androidのバージョンが古いためsndcpyは実行されません\nAndroid %d", version);
+			funcSSCButtonEnable(true);
+			return;
+		} else {
+			PUTLOG(L"Android %d", version);
+		}
+	} else {
+		PUTLOG(L"Androidのバージョンが不明です");
+	}
+
+	// ボタンを連打できないように一時的に無効化しておく
+	m_checkSSC.EnableWindow(FALSE);
+	m_checkSSC.SetWindowTextW(L"Prepareing...");
+
+
+	std::thread([=]() {
 		// sndcpy uninstall
-		_SendADBCommand(L" uninstall com.rom1v.sndcpy");
+		//_SendADBCommand(L" uninstall com.rom1v.sndcpy");
+
+		CWindow hwnd_scrcpy;
+		enum { kMaxRetryCount = 10 };
+		for (int i = 0; i < kMaxRetryCount; ++i) {
+			hwnd_scrcpy = _FindScrcpyWindow();
+			if (!hwnd_scrcpy) {
+				PUTLOG(L"_FindScrcpyWindow retry: %d", i);
+				::Sleep(500);
+			}
+		}
+
+		if (!hwnd_scrcpy) {
+			PUTLOG(L"scrcpyの画面が見つかりません");
+			return;
+		}
+
+		if (m_config.noResize) {
+			hwnd_scrcpy.ModifyStyle(WS_THICKFRAME, 0);	// サイズ変更禁止にする
+		}
 
 		PUTLOG(L"sndcpy起動");
 		auto sndcpyPath = GetExeDirectory() / L"sndcpy" / L"sndcpy_start.bat";
@@ -803,84 +852,11 @@ void CMainDlg::_SndcpyAutoPermission(bool bManual /*= false*/)
 
 		std::string stdoutText;
 		StartProcessGetStdOut(cmdPath, commandLine, stdoutText);
-		PUTLOG(L"[sndcpy.bat] %s", UTF16fromUTF8(stdoutText).c_str());
+		PUTLOG(L"[sndcpy_start.bat] %s", UTF16fromUTF8(stdoutText).c_str());
 
-		CWindow hwnd_scrcpy = _FindScrcpyWindow();
-		if (!hwnd_scrcpy) {
-			PUTLOG(L"scrcpyの画面が見つかりません");
-			return false;
-		}
-
-		if (m_config.noResize) {
-			hwnd_scrcpy.ModifyStyle(WS_THICKFRAME, 0);	// サイズ変更禁止にする
-		}
-
-		if (bManual) {
-			int ret = MessageBox(L"デバイス側でsndcpyの[今すぐ開始]を押した後に[OK]を選択してください。", L"scrsndcpy", MB_OKCANCEL);
-			if (ret == IDOK) {
-				_DoSoundStreaming();
-				return true;
-			}
-			return false;
-		} else {
-			::Sleep(100);	// ダイアログが出てくるまで待つ
-			PUTLOG(L"sndcpyダイアログ確認中...");
-
-			const std::string searchText = m_jsonCommon["Common"]["Sndcpy"]["AuthorizationGrep"];
-			enum { kMaxRetryCount = 10 };
-			for (int i = 0; i < kMaxRetryCount; ++i) {
-				std::string adbRet = _SendCommonAdbCommand("IsSndcpyAuthorization");
-				if (adbRet.find(searchText) != std::string::npos) {
-					PUTLOG(L"認証ダイアログ発見、自動認証します");
-					_SendADBCommand(L"shell input keyevent DPAD_RIGHT");
-					_SendADBCommand(L"shell input keyevent DPAD_RIGHT");
-					_SendADBCommand(L"shell input keyevent ENTER");
-					PUTLOG(L"認証しました");
-
-					::Sleep(500);
-					_DoSoundStreaming();
-					return true;	// success!
-
-				}
-				PUTLOG(L"retry count: %d", i);
-				::Sleep(300);
-			}
-		}
-		PUTLOG(L"sndcpyのダイアログが確認できませんでした...");
-		return false;
-	};
-
-	std::thread([=]()
-	{
-		std::string androidVersion = _SendCommonAdbCommand("AndroidVersion");
-		if (androidVersion.length() && std::isdigit(androidVersion.front())) {
-			enum { kSndcpyMinRequreAndroidVersion = 10 };
-			const int version = std::stoi(androidVersion);
-			if (version < kSndcpyMinRequreAndroidVersion) {
-				PUTLOG(L"Androidのバージョンが古いためsndcpyは実行されません\nAndroid %d", version);
-				funcSSCButtonEnable(true);
-				return;
-			} else {
-				PUTLOG(L"Android %d", version);
-			}
-		} else {
-			PUTLOG(L"Androidのバージョンが不明です");
-		}
-
-		enum { kMaxSndcpyRetryCount = 2 };
-		for (int k = 0; k < kMaxSndcpyRetryCount; ++k) {
-			if (funcStartSndcpy()) {
-				funcSSCButtonEnable(true);
-				return;	// success!
-			}
-
-			PUTLOG(L"Retry: %d", k);
-			::ShellExecute(NULL, NULL, GetAdbPath().c_str(), L" kill-server", NULL, SW_HIDE);
-			::Sleep(1000);
-			::ShellExecute(NULL, NULL, GetAdbPath().c_str(), L" start-server", NULL, SW_HIDE);
-			::Sleep(1000);
-		}
-		funcSSCButtonEnable(false);	// failed...
+		::Sleep(500);	// 初回接続までは少し待機する必要がある
+		_DoSoundStreaming();
+		return ;	// success!
 	}).detach();
 }
 
@@ -913,11 +889,20 @@ void CMainDlg::_DoSoundStreaming()
 			addr.Set("127.0.0.1", "28200");
 			CSocket sock;
 			std::atomic_bool valid = true;
-			enum { kMaxConnectRetryCount = 10 };
+			enum { kMaxConnectRetryCount = 20 };
 			for (int i = 0; i < kMaxConnectRetryCount; ++i) {
 				if (!sock.Connect(addr, valid)) {
 					::Sleep(500);
 				} else {
+					sock.SetBlocking(true);
+					char temp[64] = "";
+					int recvSize = sock.Read(temp, 64);
+					if (recvSize == 0) {
+						PUTLOG(L"Connect retry: %d", i);
+						::Sleep(500);
+						continue;	// retry
+					}
+
 					PUTLOG(L"接続成功");
 					break;
 				}
@@ -962,11 +947,11 @@ void CMainDlg::_DoSoundStreaming()
 						prevTime = nowTime;
 
 						std::string stdoutText = _SendCommonAdbCommand("DumpsysPower");
-						std::regex rx(R"(Display Power: state=(ON|OFF))");
+						std::regex rx(R"(mWakefulness=([^\r]+))");
 						std::smatch result;
 						if (std::regex_search(stdoutText, result, rx)) {
 							std::string displayState = result[1].str();
-							if (displayState == "OFF") {
+							if (displayState != "Awake") {
 								m_wavePlay.reset();	
 								m_wavePlayInfo.SetWindowText(L"Pausing playback");
 								return true;	// 再生ストップ
@@ -989,24 +974,23 @@ void CMainDlg::_DoSoundStreaming()
 			const int bufferSize = m_wavePlay->GetBufferBytes();
 			auto buffer = std::make_unique<char[]>(bufferSize);
 
-			enum { kDiscardCount = 2 };
+			// 最初に送られてくる音声データを破棄する (最新のデータを取得するため)
+			enum { kDataDiscardSec = 1 };
 			auto timebegin = std::chrono::steady_clock::now();
-			while (std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - timebegin).count() < kDiscardCount) {
+			while (std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - timebegin).count() < kDataDiscardSec) {
 				int recvSize = sock.Read(buffer.get(), bufferSize);
 			}
 			PUTLOG(L"音声のストリーミング再生を開始します");
 			funcSSCButtonEnable();
 
-			std::string bufferMain;
+
 			while (!m_cancelSoundStreaming) {
-				//char buffer[1024];
 				int recvSize = sock.Read(buffer.get(), bufferSize);
 				if (recvSize == 0 && sock.IsConnected()) {
 					continue;
 				}
 				if (recvSize == -1) {
-					ERROR_LOG << L"Socket Error";
-					PUTLOG(L"Socket Error");
+					PUTLOG(L"Socket Error - audio streaming finish");
 					break;
 				}
 				if (funcMutePlayStop(buffer.get(), recvSize)) {
@@ -1027,6 +1011,8 @@ void CMainDlg::_DoSoundStreaming()
 void CMainDlg::_StopStreaming()
 {
 	if (m_scrcpyProcess.IsRunning()) {
+		PUTLOG(L"ストリーミングを停止します");
+
 		HWND hwnd_scrcpy = _FindScrcpyWindow();
 		if (hwnd_scrcpy) {
 			if (::IsIconic(hwnd_scrcpy) == FALSE) {
@@ -1044,10 +1030,6 @@ void CMainDlg::_StopStreaming()
 				}
 			}
 
-			if (m_config.deviceMuteOnStart) {
-				_SendCommonAdbCommand("UnMute");
-			}
-
 			::PostMessage(hwnd_scrcpy, WM_CLOSE, 0, 0);
 		} else {
 			// scrcpy本体の閉じるボタンが押された場合
@@ -1057,9 +1039,13 @@ void CMainDlg::_StopStreaming()
 			_SendCommonAdbCommand("UnMute");
 		}
 		// sndcpy uninstall
-		_SendADBCommand(L" uninstall com.rom1v.sndcpy");
+		//_SendADBCommand(L" uninstall com.rom1v.sndcpy");
 
 		m_scrcpyProcess.Terminate();
+
+		m_checkSSC.SetCheck(BST_UNCHECKED);
+		m_checkSSC.SetWindowTextW(L"Screen Sound Copy");
+		m_currentDeviceSerial.clear();
 	}
 	if (m_sharedMemFilemap) {
 		::UnmapViewOfFile((LPCVOID)m_sharedMemoryData);
@@ -1071,6 +1057,7 @@ void CMainDlg::_StopStreaming()
 		m_cancelSoundStreaming = true;
 		m_threadSoundStreeming.detach();
 	}
+	PUTLOG(L"停止完了");
 }
 
 std::wstring CMainDlg::_BuildScrcpyCommandLine()
@@ -1111,7 +1098,33 @@ HWND CMainDlg::_FindScrcpyWindow()
 
 std::string CMainDlg::_SendCommonAdbCommand(const std::string& commandName, std::string deviceSerial)
 {
-	std::wstring adbCommand = UTF16fromUTF8(m_jsonCommon["Common"]["AdbCommand"][commandName].get<std::string>());
+	std::wstring adbCommand;
+	auto jsonAdbCommand = m_jsonCommon["Common"]["AdbCommand"][commandName];
+	if (jsonAdbCommand.is_null()) {
+		// 現在のAndroid versionに合うAdbCommandを見つける
+		if (m_currentDeviceAndroidVersion != 0) {
+			std::string androidVersion = "Android" + std::to_string(m_currentDeviceAndroidVersion);
+			auto jsonCurrentAndroidDeviceCommand = m_jsonCommon["Common"]["AdbCommand"][androidVersion];
+			if (jsonCurrentAndroidDeviceCommand.is_object()) {
+				jsonAdbCommand = jsonCurrentAndroidDeviceCommand[commandName];
+			}
+		}
+		// デフォルトのAdbCommandを見つける
+		if (jsonAdbCommand.is_null()) {
+			std::string androidVersion = "Android" + std::to_string(m_jsonCommon["Common"]["DefaultAdbCommandAndroidVersion"].get<int>());
+			jsonAdbCommand = m_jsonCommon["Common"]["AdbCommand"][androidVersion][commandName];
+		}
+		ATLASSERT(!jsonAdbCommand.is_null());
+		if (jsonAdbCommand.is_null()) {
+			PUTLOG(L"コマンドが見つかりません: %s", UTF16fromUTF8(commandName).c_str());
+			return "";
+		}
+
+		adbCommand = UTF16fromUTF8(jsonAdbCommand.get<std::string>());
+
+	} else {
+		adbCommand = UTF16fromUTF8(m_jsonCommon["Common"]["AdbCommand"][commandName].get<std::string>());
+	}
 	ATLASSERT(adbCommand.length());	
 	return _SendADBCommand(adbCommand, deviceSerial);
 }

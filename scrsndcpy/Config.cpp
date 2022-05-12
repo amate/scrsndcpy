@@ -54,8 +54,8 @@ bool Config::LoadConfig()
 
 	// sndcpy
 	bufferMultiple = jsonSetting["Config"].value("BufferMultiple", bufferMultiple);
-	maxBufferSampleCount =
-		jsonSetting["Config"].value("MaxBufferSampleCount", maxBufferSampleCount);
+	maxBufferSampleCount = jsonSetting["Config"].value("MaxBufferSampleCount", maxBufferSampleCount);
+	deviceMuteOnStart = jsonSetting["Config"].value("DeviceMuteOnStart", deviceMuteOnStart);
 	toggleMuteReverse = jsonSetting["Config"].value("ToggleMuteReverse", toggleMuteReverse);
 
 	return true;

@@ -138,6 +138,7 @@ private:
 	std::vector<std::string>	m_deviceList;
 	bool			m_bFirstDeviceCheck = true;
 	std::wstring	m_currentDeviceSerial;
+	int				m_currentDeviceAndroidVersion = 0;
 
 	ProcessIO	m_adbTrackDevicesProcess;
 
@@ -149,7 +150,7 @@ private:
 
 	Config	m_config;
 	nlohmann::json	m_jsonCommon;
-	CPoint	m_scrcpyWidowPos;
+	CPoint	m_scrcpyWidowPos = CPoint(100, 100);
 
 	CEdit	m_wavePlayInfo;
 

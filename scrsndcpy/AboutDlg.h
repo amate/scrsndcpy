@@ -4,7 +4,7 @@
 
 #pragma once
 
-#define	APP_VERSION L"v1.2"
+#define	APP_VERSION L"v1.3"
 
 class CAboutDlg : public CDialogImpl<CAboutDlg>
 {

@@ -12,6 +12,9 @@
 
 using namespace std::chrono;
 
+constexpr LPCSTR kavutil_dllNameA = "avutil-57.dll";
+constexpr LPCWSTR kavutil_dllNameW = L"avutil-57.dll";
+
 // 前方宣言
 struct AVFrame;
 
@@ -123,7 +126,7 @@ int 	Replaced_SDL_WaitEvent(SDL_Event* event)
 void    Init()
 {
     {
-        HMODULE hDll = ::LoadLibraryA("avutil-56.dll");
+        HMODULE hDll = ::LoadLibraryA(kavutil_dllNameA);
         assert(hDll);
 
         g_func_av_frame_clone = (Func_av_frame_clone)::GetProcAddress(hDll, "av_frame_clone");
@@ -148,7 +151,7 @@ void    Init()
 
     // Hook
     MH_Initialize();
-    auto ret = MH_CreateHookApi(L"avutil-56.dll", "av_frame_move_ref", (LPVOID)&Replaced_av_frame_move_ref, (LPVOID*)&g_org_av_frame_move_ref);
+    auto ret = MH_CreateHookApi(kavutil_dllNameW, "av_frame_move_ref", (LPVOID)&Replaced_av_frame_move_ref, (LPVOID*)&g_org_av_frame_move_ref);
     bool success = ret == MH_OK;
 
     auto ret2 = MH_CreateHookApi(L"SDL2.dll", "SDL_WaitEvent", (LPVOID)&Replaced_SDL_WaitEvent, (LPVOID*)&g_org_SDL_WaitEvent);

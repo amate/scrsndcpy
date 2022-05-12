@@ -24,11 +24,13 @@ USBデバッグを有効にしたAndoridとPCをUSBケーブルで接続する�
 Device listからミラーリングしたいデバイスを選択した後に、  
 "Screen Sound Copy"ボタンを押すとAndroidの画面と音声がPC側にミラーリングされます
 
+もしミラーリングウィンドウが表示されない場合、ソフトを終了した状態で同じフォルダ内にある"adb kill-server.bat"を実行してみてください
+
 ・Wi-Fi経由での接続方法  
 Configから"デバイスへWi-Fi経由での接続を行えるようにする"にチェックが入っている状態で、PCにデバイスを接続してください  
 すると、デバイス側がWi-Fi経由での接続を待ち受けるようになるので、Device listから"192.168.0.x:5555"を選択した後に"Screen Sound Copy"ボタンを押せばミラーリングが開始されます  
 
-画面の位置を記憶するには、Ctrlキーを押しながら"My device"ウィンドウを閉じてください
+画面の位置を記憶するには、Ctrlキーを押しながら"Streaming"ボタンを押してください
 
 ## ■設定
 
@@ -111,13 +113,30 @@ Visual Studio 2019で "scrsndcpy.sln"を開き、
 デバッグ->デバッグの開始 を実行すれば、vcpkgがライブラリの準備をした後、実行ファイルが生成されます
 
 ## ■著作権表示
-Copyright (C) 2021 amate
+Copyright (C) 2021-2022 amate
 
 自分が書いた部分のソースコードは、MIT Licenseとします
 
 ## ■更新履歴
 
 <pre>
+
+v1.3
+・[update] scrcpyを 1.24 に更新
+・[update] sndcpyを 1.1 に更新
+・[fix] delayFrameで scrcpyの更新に追従 (フックするdll名を変更 avutil-56.dll -> avutil-57.dll)
+・[fix] 設定ダイアログで、"ミラーリング開始時にデバイスの音声をミュートする"設定が保存されなかったのを修正
+・[misc] turnScreenOffのデフォルトを false に変更
+・[change] 最初に [Screen Sound Copy]実行したときに表示されるウィンドウの位置を変更 (タイトルバーがモニター外に隠れないようにした)
+・[fix] スリープ復帰時の再接続処理を二重実行しないように修正
+・[fix] 起動時に"adb start-server"を実行しないようにした (scrcpyを更新すると起動しなくなってしまうので)
+・[change] sndcpy実行時にAndroid側の確認ダイアログが出なくなった
+・[fix] sndcpyへの接続時にリトライ処理を追加
+・[fix] 音声再生停止時の画面点灯状態の確認に"Display Power: state"から"mWakefulness=Awake"かどう確認するように変更
+・[change] 音声再生時の初回バッファ削除時間を２秒から１秒に変更
+・[change] sndcpyのアンインストール処理を省いた
+・[fix] Android11でも Mute/UnMute/Toggle Mute できるようにした
+・[add] "adb kill-server.bat" を追加 (adbの調子悪い時に使う)
 
 v1.2
 ・[update] 開発環境を VisualStudio 2019 から VisualStudio 2022 へ移行
