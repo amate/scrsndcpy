@@ -132,7 +132,9 @@ v1.4
 
 ・[change] スクリーンショットを別スレッドで実行するように変更
 ・[change] sndcpyへの接続リトライ数を10から15に変更 (リトライ時は6とか7回目に接続されることがあるので)
-・[change] m_buffer.clear()の処理は、"(m_maxBufferSampleCount * 2) < maxSample"となったときに変更 (今までより早くバッファがクリアされるようになった)
+・[change] m_buffer.clear()の処理は、"(m_maxBufferSampleCount * 3) < maxSample"となったときに変更 (今までより早くバッファがクリアされるようになった)
+
+・[change] 音声の再生は scrcpy.exe側で行うようにした
 
 v1.3
 ・[update] scrcpyを 1.24 に更新

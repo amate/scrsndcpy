@@ -348,6 +348,72 @@ void CMainDlg::OnTimer(UINT_PTR nIDEvent)
 	}
 }
 
+BOOL CMainDlg::OnCopyData(CWindow wnd, PCOPYDATASTRUCT pCopyDataStruct)
+{
+	if (pCopyDataStruct->dwData == kPutLog) {
+		PUTLOG(L"%s", (LPCWSTR)pCopyDataStruct->lpData);
+	}
+
+	return 0;
+}
+
+LRESULT CMainDlg::OnDelayFrameCommand(UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+	switch (wParam) {
+	case kStartSndcpy:
+	{
+		PUTLOG(L"sndcpy起動");
+		auto sndcpyPath = GetExeDirectory() / L"sndcpy" / L"sndcpy_start.bat";
+
+		WCHAR systemFolder[MAX_PATH] = L"";
+		::GetSystemDirectory(systemFolder, MAX_PATH);
+		auto cmdPath = fs::path(systemFolder) / L"cmd.exe";
+		std::wstring commandLine = L"/S /C \"";
+		commandLine += L"\"" + sndcpyPath.wstring() + L"\" ";
+		commandLine += m_currentDeviceSerial;
+		commandLine += L"\"";
+
+		std::string stdoutText;
+		StartProcessGetStdOut(cmdPath, commandLine, stdoutText);
+		PUTLOG(L"[sndcpy_start.bat] %s", UTF16fromUTF8(stdoutText).c_str());
+
+		//::Sleep(500);	// 初回接続までは少し待機する必要がある
+		return TRUE;
+
+	}
+	break;
+
+	case kRestartSndcpy:
+	{
+		std::string outret = _SendADBCommand(L"shell am start com.rom1v.sndcpy/.MainActivity --activity-clear-top"); // お試し --activity-clear-top
+		return TRUE;
+	}
+	break;
+
+	case kWakefulness:
+	{
+		std::string stdoutText = _SendCommonAdbCommand("DumpsysPower");
+		std::regex rx(R"(mWakefulness=([^\r]+))");
+		std::smatch result;
+		if (std::regex_search(stdoutText, result, rx)) {
+			std::string displayState = result[1].str();
+			if (displayState != "Awake") {
+				m_wavePlayInfo.SetWindowText(L"Pausing playback");
+				return TRUE;
+			}
+		}
+		return FALSE;
+	}
+
+	default:
+	{
+		ATLASSERT(FALSE);
+	}
+	break;
+	}
+	return FALSE;
+}
+
 LRESULT CMainDlg::OnPutLog(UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
 	std::unique_ptr<CString> pLogText((CString*)wParam);
@@ -473,21 +539,20 @@ void CMainDlg::OnToggleMute(UINT uNotifyCode, int nID, CWindow wndCtl)
 		_SendCommonAdbCommand("ToggleMute");
 
 	} else {
-		int nPos = kMaxVolume - m_sliderVolume.GetPos();// sliderVolume.SetPos(nPos);
-		if (!m_wavePlay) {
-			return;
-		}
-		if (nPos > 0) {
+		int soundVolume = kMaxVolume - m_sliderVolume.GetPos();
+		if (soundVolume > 0) {
 			m_prevVolume = m_sliderVolume.GetPos();
 			m_sliderVolume.SetPos(kMaxVolume);
 
-			m_wavePlay->SetVolume(0);
+			//m_wavePlay->SetVolume(0);
+			m_sharedMemoryData->playSoundVolume = 0;
 			_SendCommonAdbCommand("UnMute");
 		} else {
 			int prevVolume = kMaxVolume - m_prevVolume;
 			m_sliderVolume.SetPos(m_prevVolume);
 
-			m_wavePlay->SetVolume(prevVolume);
+			//m_wavePlay->SetVolume(prevVolume);
+			m_sharedMemoryData->playSoundVolume = prevVolume;
 			_SendCommonAdbCommand("Mute");
 		}
 	}
@@ -575,10 +640,15 @@ void CMainDlg::OnConfig(UINT uNotifyCode, int nID, CWindow wndCtl)
 
 void CMainDlg::OnTrackberVScroll(UINT nSBCode, UINT nPos, CScrollBar pScrollBar)
 {
-	nPos = kMaxVolume - m_sliderVolume.GetPos();// sliderVolume.SetPos(nPos);
-	if (m_wavePlay) {
-		m_wavePlay->SetVolume(nPos);
+	if (m_sharedMemoryData) {
+		int soundVolume = kMaxVolume - m_sliderVolume.GetPos();
+		m_sharedMemoryData->playSoundVolume = soundVolume;
 	}
+
+	//nPos = kMaxVolume - m_sliderVolume.GetPos();// sliderVolume.SetPos(nPos);
+	//if (m_wavePlay) {
+	//	m_wavePlay->SetVolume(nPos);
+	//}
 }
 
 void CMainDlg::_AdbTrackDeviceInit()
@@ -847,8 +917,19 @@ bool CMainDlg::_DelayFrameInject()
 			m_sharedMemFilemap.Close();
 			return false;
 		}
+
+		// 共有メモリ初期化
 		m_sharedMemoryData->delayFrameCount = m_config.delayFrameCount;	// 設定書き込み
 		m_sharedMemoryData->doEventFlag = false;
+
+		m_sharedMemoryData->hwndMainDlg = m_hWnd;
+
+		m_sharedMemoryData->streamingReady = false;
+		m_sharedMemoryData->bufferMultiple = m_config.bufferMultiple;
+		m_sharedMemoryData->maxBufferSampleCount = m_config.maxBufferSampleCount;
+		int soundVolume = kMaxVolume - m_sliderVolume.GetPos();
+		m_sharedMemoryData->playSoundVolume = soundVolume;
+		m_sharedMemoryData->nowSoundStreaming = false;
 	}
 
 	auto dllPath = delayDllPath.string();
@@ -950,23 +1031,10 @@ void CMainDlg::_SndcpyAutoPermission(bool bManual /*= false*/)
 			hwnd_scrcpy.ModifyStyle(WS_THICKFRAME, 0);	// サイズ変更禁止にする
 		}
 
-		PUTLOG(L"sndcpy起動");
-		auto sndcpyPath = GetExeDirectory() / L"sndcpy" / L"sndcpy_start.bat";
-
-		WCHAR systemFolder[MAX_PATH] = L"";
-		::GetSystemDirectory(systemFolder, MAX_PATH);
-		auto cmdPath = fs::path(systemFolder) / L"cmd.exe";
-		std::wstring commandLine = L"/S /C \"";
-		commandLine += L"\"" + sndcpyPath.wstring() + L"\" ";
-		commandLine += m_currentDeviceSerial;
-		commandLine += L"\"";
-
-		std::string stdoutText;
-		StartProcessGetStdOut(cmdPath, commandLine, stdoutText);
-		PUTLOG(L"[sndcpy_start.bat] %s", UTF16fromUTF8(stdoutText).c_str());
-
-		::Sleep(500);	// 初回接続までは少し待機する必要がある
 		_DoSoundStreaming();
+
+		m_checkSSC.EnableWindow(TRUE);
+		m_checkSSC.SetWindowTextW(L"Streaming...");
 		return ;	// success!
 	}).detach();
 }
@@ -985,6 +1053,13 @@ std::string CMainDlg::_SendADBCommand(const std::wstring& command, std::string d
 
 void CMainDlg::_DoSoundStreaming()
 {
+	ATLASSERT(m_scrcpyProcess.IsRunning());
+	if (!m_scrcpyProcess.IsRunning() || !m_sharedMemoryData) {
+		return;
+	}
+	m_sharedMemoryData->streamingReady = true;
+	return;
+
 	ATLASSERT(!m_threadSoundStreeming.joinable());
 	m_cancelSoundStreaming = false;
 	m_threadSoundStreeming = std::thread([this]()

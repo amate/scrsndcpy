@@ -40,6 +40,8 @@ public:
 
 		WM_WAVEPlAY_INFO = WM_APP + 1,
 		WM_PUTLOG = WM_APP + 2,
+		WM_DELAYFRAME_COMMAND = WM_APP + 3,
+
 		WM_RUN_SCRSNDCPY = WM_APP + 10,
 
 		kSleepResumeTimerId = 1,
@@ -83,6 +85,8 @@ public:
 		MESSAGE_HANDLER(WM_DESTROY, OnDestroy)
 		MSG_WM_POWERBROADCAST(OnPowerBroadcast)
 		MSG_WM_TIMER(OnTimer)
+		MSG_WM_COPYDATA(OnCopyData)
+		MESSAGE_HANDLER_EX(WM_DELAYFRAME_COMMAND, OnDelayFrameCommand)
 		MESSAGE_HANDLER_EX(WM_PUTLOG, OnPutLog)
 		MESSAGE_HANDLER_EX(WM_RUN_SCRSNDCPY, OnRunScrsndcpy)
 		COMMAND_ID_HANDLER(ID_APP_ABOUT, OnAppAbout)
@@ -109,6 +113,8 @@ public:
 	LRESULT OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	BOOL	OnPowerBroadcast(DWORD dwPowerEvent, DWORD_PTR dwData);
 	void	OnTimer(UINT_PTR nIDEvent);
+	BOOL	OnCopyData(CWindow wnd, PCOPYDATASTRUCT pCopyDataStruct);
+	LRESULT	OnDelayFrameCommand(UINT uMsg, WPARAM wParam, LPARAM lParam);
 	LRESULT OnPutLog(UINT uMsg, WPARAM wParam, LPARAM lParam);	
 	LRESULT OnRunScrsndcpy(UINT uMsg, WPARAM wParam, LPARAM lParam);
 
