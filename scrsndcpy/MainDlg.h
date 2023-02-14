@@ -46,6 +46,8 @@ public:
 		kSleepResumeTimerInterval = 15 * 1000,
 		kAutoRunTimerId = 2,
 		kAutoRunTimerInterval = 2 * 1000,
+
+		kScrcpyMaxRetryCount = 1,
 	};
 
 	virtual BOOL PreTranslateMessage(MSG* pMsg)
@@ -117,6 +119,7 @@ public:
 private:
 	void	_AdbTrackDeviceInit();
 	bool	_ScrcpyStart();
+	bool	_DelayFrameInject();
 	void	_SndcpyAutoPermission(bool bManual = false);
 	std::string	_SendADBCommand(const std::wstring& command, std::string deviceSerial = "");
 	void	_DoSoundStreaming();
@@ -128,6 +131,7 @@ private:
 
 	void CloseDialog(int nVal);
 
+	// ===========================================================
 	static CEdit	m_editLog;
 
 	CButton	m_checkSSC;
@@ -158,4 +162,6 @@ private:
 
 	HPOWERNOTIFY	m_powerNotifyHandle = NULL;
 	bool			m_runningBeforeSleep = false;
+
+	int	m_scrcpyRetryCount = 0;
 };

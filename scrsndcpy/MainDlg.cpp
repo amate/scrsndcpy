@@ -5,6 +5,9 @@
 #include <chrono>
 #include <unordered_set>
 #include <regex>
+#include <mutex>
+#include <condition_variable>
+#include <optional>
 #include <boost\algorithm\string\trim.hpp>
 
 #include "WavePlay.h"
@@ -385,8 +388,33 @@ LRESULT CMainDlg::OnScreenSoundCopy(WORD, WORD wID, HWND, BOOL&)
 		// scrcpy
 		bool success = _ScrcpyStart();
 		if (!success) {
-			PUTLOG(L"scrcpyの実行に失敗");
+			_StopStreaming();
+
+			++m_scrcpyRetryCount;
+			PUTLOG(L"scrcpyの実行に失敗 - retryCount: %d", m_scrcpyRetryCount);
+			if (m_scrcpyRetryCount <= kScrcpyMaxRetryCount) {
+				_SendADBCommand(L"kill-server", m_deviceList[index]);
+
+				m_adbTrackDevicesProcess.Terminate();
+				_AdbTrackDeviceInit();
+
+				SetTimer(kAutoRunTimerId, kAutoRunTimerInterval);
+			}			
 			return 0;
+		}
+		m_scrcpyRetryCount = 0;
+
+		// Android version check
+		m_currentDeviceAndroidVersion = 0;
+		std::string androidVersion = _SendCommonAdbCommand("AndroidVersion");
+		if (androidVersion.length() && std::isdigit(androidVersion.front())) {
+			enum { kSndcpyMinRequreAndroidVersion = 10 };
+			const int version = std::stoi(androidVersion);
+			m_currentDeviceAndroidVersion = version;
+			PUTLOG(L"Android %d", version);
+
+		} else {
+			PUTLOG(L"Androidのバージョンが不明です");
 		}
 
 		// 自動ログイン
@@ -569,40 +597,43 @@ void CMainDlg::_AdbTrackDeviceInit()
 		}
 
 		// デバイス側へwifi経由でのadb待ち受けを行うように指示する
-		if (m_config.autoWifiConnect && m_bFirstDeviceCheck || (prevDeviceListCount != m_deviceList.size())) {
-			m_bFirstDeviceCheck = false;
-			const int acceptPort = 5555;
+		if (m_config.autoWifiConnect) {
+			if (m_bFirstDeviceCheck || (prevDeviceListCount != m_deviceList.size())) {
+				const int acceptPort = 5555;
 
-			// デバイスへ待ち受け要求する
-			for (const std::string& device : deviceList) {
-				if (connectedDeviceList.find(device) != connectedDeviceList.end()) {
-					continue;
-				}
-				if (device.substr(0, 8) == "192.168.") {
-					continue;
-				}
+				// デバイスへ待ち受け要求する
+				for (const std::string& device : deviceList) {
+					if (connectedDeviceList.find(device) != connectedDeviceList.end()) {
+						continue;
+					}
+					if (device.substr(0, 8) == "192.168.") {
+						continue;
+					}
 
-				std::string wlanText = _SendCommonAdbCommand("DeviceIPAddress", device);
-				auto ipBeginPos = wlanText.find("192.168.");
-				if (ipBeginPos == std::string::npos) {
-					PUTLOG(L"デバイスがローカルwifiに接続されていません: %s", UTF16fromUTF8(device).c_str());
-					continue;
+					std::string wlanText = _SendCommonAdbCommand("DeviceIPAddress", device);
+					auto ipBeginPos = wlanText.find("192.168.");
+					if (ipBeginPos == std::string::npos) {
+						PUTLOG(L"デバイスがローカルwifiに接続されていません: %s", UTF16fromUTF8(device).c_str());
+						continue;
+					}
+					auto slashPos = wlanText.find("/", ipBeginPos);
+					if (slashPos == std::string::npos) {
+						ATLASSERT(FALSE);
+						continue;
+					}
+
+					std::string deviceIPAddress = wlanText.substr(ipBeginPos, slashPos - ipBeginPos);
+					std::string deviceIPPort = deviceIPAddress + ":" + std::to_string(acceptPort);
+					// 待ち受け
+					_SendADBCommand(L"tcpip " + std::to_wstring(acceptPort), device);
+					// 接続
+					StartProcess(GetAdbPath(), L" connect " + UTF16fromUTF8(deviceIPPort));
+					PUTLOG(L"adb connect %s", UTF16fromUTF8(deviceIPPort).c_str());
 				}
-				auto slashPos = wlanText.find("/", ipBeginPos);
-				if (slashPos == std::string::npos) {
-					ATLASSERT(FALSE);
-					continue;
-				}
-				
-				std::string deviceIPAddress = wlanText.substr(ipBeginPos, slashPos - ipBeginPos);
-				std::string deviceIPPort = deviceIPAddress + ":" + std::to_string(acceptPort);
-				// 待ち受け
-				_SendADBCommand(L"tcpip " + std::to_wstring(acceptPort), device);
-				// 接続
-				StartProcess(GetAdbPath(), L" connect " + UTF16fromUTF8(deviceIPPort));
-				PUTLOG(L"adb connect %s", UTF16fromUTF8(deviceIPPort).c_str());
 			}
 		}
+
+		m_bFirstDeviceCheck = false;
 	});
 	
 	{	// 終了時に、デバイスとadbとの接続が切れないようにする
@@ -636,21 +667,38 @@ bool CMainDlg::_ScrcpyStart()
 
 	auto scrcpyPath = GetExeDirectory() / L"scrcpy" / L"scrcpy.exe";
 
-	m_scrcpyProcess.RegisterStdOutCallback([this](const std::string& text) {
+	auto notify = std::make_shared<std::optional<bool>>();
+	auto mtx = std::make_shared<std::mutex>();
+	auto cond = std::make_shared<std::condition_variable>();
+
+	m_scrcpyProcess.RegisterStdOutCallback([=](const std::string& text) {
+		
 		std::string log = text;
 		if (log.back() == '\n') {
 			log = log.substr(0, log.size() - 2);
 		}
 		PUTLOG(L"[scrcpy] %s", UTF16fromUTF8(log).c_str());
 
-		if (log.find("Killing the server") != std::string::npos || 
-			log.find("Device disconnected") != std::string::npos) 
+		if (log.find("Killing the server") != std::string::npos ||
+			log.find("Device disconnected") != std::string::npos)
 		{
 			// scrcpyの画面が閉じられた
 			if (m_checkSSC.GetCheck() == BST_CHECKED) {
 				m_checkSSC.SetCheck(BST_UNCHECKED);
 				PostMessage(WM_COMMAND, IDC_CHECK_SCREENSOUNDCOPY);
 			}
+		} else if (log.find("INFO: Device:") != std::string::npos) {
+			// 接続成功
+			std::lock_guard<std::mutex> lock(*mtx);
+			notify->emplace(true);
+			cond->notify_all();
+
+		} else if (log.find("ERROR: Device is unauthorized") != std::string::npos) {
+			// 接続失敗
+			std::lock_guard<std::mutex> lock(*mtx);
+			notify->emplace(false);
+			cond->notify_all();
+
 		} else if (log.find("New texture") != std::string::npos) {
 			//  INFO: New texture: 1280x800
 			std::string strSize = log.substr(19);
@@ -676,8 +724,7 @@ bool CMainDlg::_ScrcpyStart()
 				}
 			}
 		}
-
-		});
+	});
 
 	std::wstring scrcpyCommandLine = _BuildScrcpyCommandLine();
 	scrcpyCommandLine += L" --serial " + m_currentDeviceSerial;
@@ -688,84 +735,7 @@ bool CMainDlg::_ScrcpyStart()
 		return false;
 	}
 
-	{
-		const DWORD scrcpyProcessID = ::GetProcessId(m_scrcpyProcess.GetProcessInfomation().hProcess);
-		std::wstring sharedMemName = L"delayFrame" + std::to_wstring(scrcpyProcessID);
-
-		m_sharedMemFilemap.Attach(
-			::CreateFileMapping(
-				INVALID_HANDLE_VALUE,    // use paging file
-				NULL,                    // default security
-				PAGE_READWRITE,          // read/write access
-				0,                       // maximum object size (high-order DWORD)
-				sizeof(uint32_t),        // maximum object size (low-order DWORD)
-				sharedMemName.c_str())	 // name of mapping object
-		);
-		if (!m_sharedMemFilemap) {
-			ATLASSERT(FALSE);
-			PUTLOG(L"共有メモリの作成に失敗");
-			return false;
-		} else {
-			m_sharedMemoryData = (SharedMemoryData*)::MapViewOfFile(m_sharedMemFilemap, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(SharedMemoryData));
-			ATLASSERT(m_sharedMemoryData);
-			m_sharedMemoryData->delayFrameCount = m_config.delayFrameCount;	// 設定書き込み
-			m_sharedMemoryData->doEventFlag = false;
-		}
-
-		// Dll inject実行
-		BOOL ret = FALSE;
-		auto delayDllPath = GetExeDirectory() / L"delayFrame.dll";
-		if (!fs::exists(delayDllPath)) {
-			ATLASSERT(FALSE);
-			PUTLOG(L"delayFrame.dllが存在しません...");
-			return false;
-		}
-		auto dllPath = delayDllPath.string();
-		HANDLE proc = m_scrcpyProcess.GetProcessInfomation().hProcess;
-		LPSTR libPath = (LPSTR)dllPath.c_str();
-		DWORD pathSize = static_cast<DWORD>(dllPath.length() + 1);
-
-		LPSTR remoteLibPath = (LPSTR)::VirtualAllocEx(
-			proc,
-			NULL,
-			pathSize,
-			MEM_COMMIT,
-			PAGE_READWRITE);
-		ATLASSERT(remoteLibPath);
-		if (!remoteLibPath) {
-			PUTLOG(L"VirtualAllocEx failed");
-			return false;
-		}
-
-		// リモートプロセスへ読み込ませたいDLLのパスを書き込む
-		ret = ::WriteProcessMemory(
-			proc,
-			remoteLibPath,
-			libPath,
-			pathSize,
-			NULL);
-		ATLASSERT(ret);
-		if (!ret) {
-			PUTLOG(L"WriteProcessMemory failed");
-			return false;
-		}
-
-		// 自プロセス内のLoadlibraryへのアドレスをそのまま引数として渡す 
-		HANDLE hRemoteThread = ::CreateRemoteThread(
-			proc,
-			NULL,
-			0,
-			(LPTHREAD_START_ROUTINE)LoadLibraryA,
-			remoteLibPath,
-			0,
-			NULL);
-		ATLASSERT(hRemoteThread);
-		if (!hRemoteThread) {
-			PUTLOG(L"CreateRemoteThread failed");
-			return false;
-		}
-		::CloseHandle(hRemoteThread);
-	}
+	ATLVERIFY(_DelayFrameInject());
 
 #if 0
 	// scrcpyのコンソールウィンドウを非表示にする
@@ -779,8 +749,99 @@ bool CMainDlg::_ScrcpyStart()
 		::Sleep(100);
 	}
 #endif
+	std::unique_lock<std::mutex> lock(*mtx);
+	cond->wait_for(lock, std::chrono::seconds(5), [=] { return notify->has_value(); });
+	const bool ret = notify->has_value() ? notify->value() : false /* timeout*/;
+	return ret;
+}
+
+bool CMainDlg::_DelayFrameInject()
+{
+	// Dll inject実行
+	const DWORD scrcpyProcessID = ::GetProcessId(m_scrcpyProcess.GetProcessInfomation().hProcess);
+	std::wstring sharedMemName = L"delayFrame" + std::to_wstring(scrcpyProcessID);
+	BOOL ret = FALSE;
+	auto delayDllPath = GetExeDirectory() / L"delayFrame.dll";
+	if (!fs::exists(delayDllPath)) {
+		ATLASSERT(FALSE);
+		PUTLOG(L"delayFrame.dllが存在しません...");
+		return false;
+	}
+
+	m_sharedMemFilemap.Attach(
+		::CreateFileMapping(
+			INVALID_HANDLE_VALUE,    // use paging file
+			NULL,                    // default security
+			PAGE_READWRITE,          // read/write access
+			0,                       // maximum object size (high-order DWORD)
+			sizeof(SharedMemoryData),        // maximum object size (low-order DWORD)
+			sharedMemName.c_str())	 // name of mapping object
+	);
+	if (!m_sharedMemFilemap) {
+		ATLASSERT(FALSE);
+		PUTLOG(L"共有メモリの作成に失敗");
+		return false;
+	} else {
+		m_sharedMemoryData = (SharedMemoryData*)::MapViewOfFile(m_sharedMemFilemap, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(SharedMemoryData));
+		ATLASSERT(m_sharedMemoryData);
+		if (!m_sharedMemoryData) {
+			PUTLOG(L"MapViewOfFileに失敗");
+			m_sharedMemFilemap.Close();
+			return false;
+		}
+		m_sharedMemoryData->delayFrameCount = m_config.delayFrameCount;	// 設定書き込み
+		m_sharedMemoryData->doEventFlag = false;
+	}
+
+	auto dllPath = delayDllPath.string();
+	HANDLE proc = m_scrcpyProcess.GetProcessInfomation().hProcess;
+	LPSTR libPath = (LPSTR)dllPath.c_str();
+	DWORD pathSize = static_cast<DWORD>(dllPath.length() + 1);
+
+	LPSTR remoteLibPath = (LPSTR)::VirtualAllocEx(
+		proc,
+		NULL,
+		pathSize,
+		MEM_COMMIT,
+		PAGE_READWRITE);
+	ATLASSERT(remoteLibPath);
+	if (!remoteLibPath) {
+		PUTLOG(L"VirtualAllocEx failed");
+		return false;
+	}
+
+	// リモートプロセスへ読み込ませたいDLLのパスを書き込む
+	ret = ::WriteProcessMemory(
+		proc,
+		remoteLibPath,
+		libPath,
+		pathSize,
+		NULL);
+	ATLASSERT(ret);
+	if (!ret) {
+		PUTLOG(L"WriteProcessMemory failed");
+		return false;
+	}
+
+	// 自プロセス内のLoadlibraryへのアドレスをそのまま引数として渡す 
+	HANDLE hRemoteThread = ::CreateRemoteThread(
+		proc,
+		NULL,
+		0,
+		(LPTHREAD_START_ROUTINE)LoadLibraryA,
+		remoteLibPath,
+		0,
+		NULL);
+	ATLASSERT(hRemoteThread);
+	if (!hRemoteThread) {
+		PUTLOG(L"CreateRemoteThread failed");
+		return false;
+	}
+	::CloseHandle(hRemoteThread);
+
 	return true;	// success!
 }
+
 
 void CMainDlg::_SndcpyAutoPermission(bool bManual /*= false*/)
 {
@@ -794,21 +855,11 @@ void CMainDlg::_SndcpyAutoPermission(bool bManual /*= false*/)
 	};
 
 	// Android version check
-	m_currentDeviceAndroidVersion = 0;
-	std::string androidVersion = _SendCommonAdbCommand("AndroidVersion");
-	if (androidVersion.length() && std::isdigit(androidVersion.front())) {
-		enum { kSndcpyMinRequreAndroidVersion = 10 };
-		const int version = std::stoi(androidVersion);
-		m_currentDeviceAndroidVersion = version;
-		if (version < kSndcpyMinRequreAndroidVersion) {
-			PUTLOG(L"Androidのバージョンが古いためsndcpyは実行されません\nAndroid %d", version);
-			funcSSCButtonEnable(true);
-			return;
-		} else {
-			PUTLOG(L"Android %d", version);
-		}
-	} else {
-		PUTLOG(L"Androidのバージョンが不明です");
+	enum { kSndcpyMinRequreAndroidVersion = 10 };
+	if (m_currentDeviceAndroidVersion < kSndcpyMinRequreAndroidVersion) {
+		PUTLOG(L"Androidのバージョンが古いためsndcpyは実行されません\nAndroid %d", m_currentDeviceAndroidVersion);
+		funcSSCButtonEnable(true);
+		return;
 	}
 
 	// ボタンを連打できないように一時的に無効化しておく
@@ -832,6 +883,8 @@ void CMainDlg::_SndcpyAutoPermission(bool bManual /*= false*/)
 
 		if (!hwnd_scrcpy) {
 			PUTLOG(L"scrcpyの画面が見つかりません");
+			ATLASSERT(FALSE);
+			// Todo: ボタンを元に戻す処理を入れる
 			return;
 		}
 
@@ -885,31 +938,43 @@ void CMainDlg::_DoSoundStreaming()
 
 			PUTLOG(L"sndcpyに接続します");
 
-			IPAddress addr;
-			addr.Set("127.0.0.1", "28200");
 			CSocket sock;
-			std::atomic_bool valid = true;
-			enum { kMaxConnectRetryCount = 20 };
-			for (int i = 0; i < kMaxConnectRetryCount; ++i) {
-				if (!sock.Connect(addr, valid)) {
-					::Sleep(500);
-				} else {
-					sock.SetBlocking(true);
-					char temp[64] = "";
-					int recvSize = sock.Read(temp, 64);
-					if (recvSize == 0) {
-						PUTLOG(L"Connect retry: %d", i);
-						::Sleep(500);
-						continue;	// retry
+			auto funcConnect = [&, this]() -> bool {
+				IPAddress addr;
+				addr.Set("127.0.0.1", "28200");
+				std::atomic_bool valid = true;
+				enum { kMaxConnectRetryCount = 10 };
+				for (int i = 0; i < kMaxConnectRetryCount; ++i) {
+
+					if (m_cancelSoundStreaming) {
+						break;		// cancel
 					}
 
-					PUTLOG(L"接続成功");
-					break;
+					if (!sock.Connect(addr, valid)) {
+						::Sleep(500);
+					} else {
+						sock.SetBlocking(true);
+						char temp[64] = "";
+						int recvSize = sock.Read(temp, 64);
+						if (recvSize == 0) {
+							PUTLOG(L"Connect retry: %d", i);
+							::Sleep(500);
+							continue;	// retry
+						}
+						break;
+					}
 				}
-			}
-			if (!sock.IsConnected()) {
-				PUTLOG(L"接続に失敗しました...");
-				funcSSCButtonEnable();
+				if (!sock.IsConnected()) {
+					PUTLOG(L"接続に失敗しました...");
+					funcSSCButtonEnable();
+					return false;		// failed
+
+				} else {
+					PUTLOG(L"接続成功");
+					return true;	// success
+				}
+			};
+			if (!funcConnect()) {
 				return;
 			}
 
@@ -919,6 +984,15 @@ void CMainDlg::_DoSoundStreaming()
 				m_wavePlay->Init(m_config.bufferMultiple, m_config.maxBufferSampleCount);
 
 				m_wavePlay->SetVolume(kMaxVolume - m_sliderVolume.GetPos());
+			};
+
+			int reconnectCount = 0;
+			auto funcReConnect = [&, this]() -> bool {
+				++reconnectCount;
+				PUTLOG(L"ReConnect: %d", reconnectCount);
+				std::string outret = _SendADBCommand(L"shell am start com.rom1v.sndcpy/.MainActivity --activity-clear-top"); // お試し --activity-clear-top
+
+				return funcConnect();
 			};
 
 			using namespace std::chrono;
@@ -983,7 +1057,6 @@ void CMainDlg::_DoSoundStreaming()
 			PUTLOG(L"音声のストリーミング再生を開始します");
 			funcSSCButtonEnable();
 
-
 			while (!m_cancelSoundStreaming) {
 				int recvSize = sock.Read(buffer.get(), bufferSize);
 				if (recvSize == 0 && sock.IsConnected()) {
@@ -991,7 +1064,13 @@ void CMainDlg::_DoSoundStreaming()
 				}
 				if (recvSize == -1) {
 					PUTLOG(L"Socket Error - audio streaming finish");
-					break;
+
+					if (funcReConnect()) {
+						continue;
+
+					} else {
+						break;
+					}
 				}
 				if (funcMutePlayStop(buffer.get(), recvSize)) {
 					continue;	// 音を再生しない
