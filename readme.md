@@ -121,6 +121,15 @@ Copyright (C) 2021-2022 amate
 
 <pre>
 
+v1.4
+・[fix] scrcpyの実行に失敗したときに"adb kill-server"を実行して再度リトライするようにした
+・[fix] "デバイスへWi-Fi経由での接続を行えるようにする"オプションが無効でも実行されていたのを修正
+・[fix] _ScrcpyStart()が接続失敗を返すようにした
+・[change] sndcpyへの接続リトライ数を20から10に変更
+・[change] sndcpyへの接続リトライ時、sndcpyのアクティビティ起動オプションに "--activity-clear-top"を追加
+・[change] C++14からC++17へ更新
+・[add] スクリーンショット機能を追加 (Screenshotボタン右クリックで保存先フォルダを開きます)
+
 v1.3
 ・[update] scrcpyを 1.24 に更新
 ・[update] sndcpyを 1.1 に更新

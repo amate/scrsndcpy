@@ -50,6 +50,8 @@ public:
 		kScrcpyMaxRetryCount = 1,
 	};
 
+	CMainDlg();
+
 	virtual BOOL PreTranslateMessage(MSG* pMsg)
 	{
 		return CWindow::IsDialogMessage(pMsg);
@@ -73,6 +75,7 @@ public:
 		DDX_CONTROL_HANDLE(IDC_COMBO_DEVICES, m_cmbDevices)
 		DDX_CONTROL_HANDLE(IDC_CHECK_SCREENSOUNDCOPY, m_checkSSC)
 		DDX_CONTROL_HANDLE(IDC_SLIDER_VOLUME , m_sliderVolume)
+		DDX_CONTROL(IDC_BUTTON_SCREENSHOT, m_wndScreenShotButton)
 	END_DDX_MAP()
 
 	BEGIN_MSG_MAP_EX(CMainDlg)
@@ -89,8 +92,12 @@ public:
 
 		COMMAND_ID_HANDLER_EX(IDC_BUTTON_TOGGLE_MUTE, OnToggleMute)
 		COMMAND_ID_HANDLER_EX(IDC_BUTTON_MANUAL_SNDCPY, OnManualSndcpy)
+		COMMAND_ID_HANDLER_EX(IDC_BUTTON_SCREENSHOT, OnScreenshot)
+
 		COMMAND_ID_HANDLER_EX(IDC_BUTTON_CONFIG, OnConfig)
 		MSG_WM_VSCROLL(OnTrackberVScroll)
+	ALT_MSG_MAP(1)
+		MSG_WM_RBUTTONUP(OnScreenShotButtonUp)
 	END_MSG_MAP()
 
 // Handler prototypes (uncomment arguments if needed):
@@ -112,6 +119,8 @@ public:
 
 	void	OnToggleMute(UINT uNotifyCode, int nID, CWindow wndCtl);
 	void	OnManualSndcpy(UINT uNotifyCode, int nID, CWindow wndCtl);
+	void	OnScreenshot(UINT uNotifyCode, int nID, CWindow wndCtl);
+	void	OnScreenShotButtonUp(UINT nFlags, CPoint point);
 	void	OnConfig(UINT uNotifyCode, int nID, CWindow wndCtl);
 
 	void	OnTrackberVScroll(UINT nSBCode, UINT nPos, CScrollBar pScrollBar);
@@ -138,6 +147,8 @@ private:
 	CComboBox		m_cmbDevices;
 	CTrackBarCtrl	m_sliderVolume;
 	int		m_prevVolume = 0;
+
+	CContainedWindow	m_wndScreenShotButton;
 
 	std::vector<std::string>	m_deviceList;
 	bool			m_bFirstDeviceCheck = true;

@@ -16,6 +16,8 @@
 #define IDC_BUTTON_MANUAL_SNDCPY        1006
 #define IDC_BUTTON_CONFIG               1007
 #define IDC_CHECK_AUTO_START            1008
+#define IDC_BUTTON_MANUAL_SNDCPY2       1008
+#define IDC_BUTTON_SCREENSHOT           1008
 #define IDC_EDIT_MAX_SIZE               1009
 #define IDC_EDIT_MAX_FPS                1010
 #define IDC_EDIT_BIT_RATE               1011
@@ -31,7 +33,6 @@
 #define IDC_EDIT_VIDEO_BUFFER_MS        1018
 #define IDC_CHECK_TOGGLE_MUTE_REVERSE   1019
 #define IDC_CHECK_NO_RESIZE             1020
-#define IDC_CHECK_NO_RESIZE2            1021
 #define IDC_CHECK_RECONNECT_ON_RESUME   1021
 
 // Next default values for new objects

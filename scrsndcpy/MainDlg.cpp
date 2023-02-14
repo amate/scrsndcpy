@@ -83,6 +83,10 @@ std::vector<std::string>	GetDevices()
 
 CEdit	CMainDlg::m_editLog;
 
+CMainDlg::CMainDlg() : m_wndScreenShotButton(this, 1)
+{
+}
+
 void CMainDlg::PutLog(LPCWSTR pstrFormat, ...)
 {
 	if (!m_editLog.IsWindow())
@@ -197,6 +201,14 @@ LRESULT CMainDlg::OnInitDialog(UINT, WPARAM, LPARAM, BOOL&)
 		PUTLOG(CA2W(e.what()));
 	}
 	m_config.LoadConfig();
+
+	{
+		auto ssFolderPath = GetExeDirectory() / L"screenshot";
+		// 既定のフォルダ
+		if (!fs::is_directory(ssFolderPath)) {
+			fs::create_directory(ssFolderPath);
+		}
+	}
 
 	_AdbTrackDeviceInit();
 
@@ -491,6 +503,39 @@ void CMainDlg::OnManualSndcpy(UINT uNotifyCode, int nID, CWindow wndCtl)
 	}
 	PUTLOG(L"Manual SndCpy");
 	_SndcpyAutoPermission(true);
+}
+
+void CMainDlg::OnScreenshot(UINT uNotifyCode, int nID, CWindow wndCtl)
+{
+	if (!m_scrcpyProcess.IsRunning()) {
+		return;
+	}
+
+	CButton btn = GetDlgItem(IDC_BUTTON_SCREENSHOT);
+	btn.EnableWindow(FALSE);
+	btn.SetWindowText(L"capture...");
+
+	std::string ssPngBinary =_SendADBCommand(L"exec-out screencap -p");
+
+	auto ssFolderPath = GetExeDirectory() / L"screenshot";
+	auto ssPath = ssFolderPath / (L"screenshot_" + std::to_wstring(std::time(nullptr)) + L".png");
+
+	std::ofstream fs(ssPath.wstring(), std::ios::out | std::ios::binary);
+	fs.write(ssPngBinary.c_str(), ssPngBinary.length());
+
+	PUTLOG(L"Screenshot: %s", ssPath.filename().wstring().c_str());
+
+	btn.SetWindowText(L"Screenshot");
+	btn.EnableWindow(TRUE);
+}
+
+void CMainDlg::OnScreenShotButtonUp(UINT nFlags, CPoint point)
+{
+	auto ssFolderPath = GetExeDirectory() / L"screenshot";
+	//if (fs::is_directory(m_config.screenShotFolder)) {
+	//	ssFolderPath = m_config.screenShotFolder;
+	//}
+	::ShellExecute(NULL, NULL, ssFolderPath.c_str(), NULL, NULL, SW_NORMAL);
 }
 
 void CMainDlg::OnConfig(UINT uNotifyCode, int nID, CWindow wndCtl)
