@@ -283,6 +283,10 @@ LRESULT CMainDlg::OnDestroy(UINT, WPARAM, LPARAM, BOOL&)
 
 	m_adbTrackDevicesProcess.Terminate();
 
+	if (m_threadScreenshot.joinable()) {
+		m_threadScreenshot.detach();
+	}
+
 	return 0;
 }
 
@@ -511,22 +515,31 @@ void CMainDlg::OnScreenshot(UINT uNotifyCode, int nID, CWindow wndCtl)
 		return;
 	}
 
+	if (m_threadScreenshot.joinable()) {
+		return;
+	}
+
 	CButton btn = GetDlgItem(IDC_BUTTON_SCREENSHOT);
 	btn.EnableWindow(FALSE);
 	btn.SetWindowText(L"capture...");
 
-	std::string ssPngBinary =_SendADBCommand(L"exec-out screencap -p");
+	m_threadScreenshot = std::thread([this]() {
+		std::string ssPngBinary = _SendADBCommand(L"exec-out screencap -p");
 
-	auto ssFolderPath = GetExeDirectory() / L"screenshot";
-	auto ssPath = ssFolderPath / (L"screenshot_" + std::to_wstring(std::time(nullptr)) + L".png");
+		auto ssFolderPath = GetExeDirectory() / L"screenshot";
+		auto ssPath = ssFolderPath / (L"screenshot_" + std::to_wstring(std::time(nullptr)) + L".png");
 
-	std::ofstream fs(ssPath.wstring(), std::ios::out | std::ios::binary);
-	fs.write(ssPngBinary.c_str(), ssPngBinary.length());
+		std::ofstream fs(ssPath.wstring(), std::ios::out | std::ios::binary);
+		fs.write(ssPngBinary.c_str(), ssPngBinary.length());
 
-	PUTLOG(L"Screenshot: %s", ssPath.filename().wstring().c_str());
+		PUTLOG(L"Screenshot: %s", ssPath.filename().wstring().c_str());
 
-	btn.SetWindowText(L"Screenshot");
-	btn.EnableWindow(TRUE);
+		CButton btn = GetDlgItem(IDC_BUTTON_SCREENSHOT);
+		btn.SetWindowText(L"Screenshot");
+		btn.EnableWindow(TRUE);
+
+		m_threadScreenshot.detach();
+	});
 }
 
 void CMainDlg::OnScreenShotButtonUp(UINT nFlags, CPoint point)
@@ -988,7 +1001,7 @@ void CMainDlg::_DoSoundStreaming()
 				IPAddress addr;
 				addr.Set("127.0.0.1", "28200");
 				std::atomic_bool valid = true;
-				enum { kMaxConnectRetryCount = 10 };
+				enum { kMaxConnectRetryCount = 15 };
 				for (int i = 0; i < kMaxConnectRetryCount; ++i) {
 
 					if (m_cancelSoundStreaming) {

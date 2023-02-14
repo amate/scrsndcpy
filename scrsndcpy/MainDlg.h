@@ -175,4 +175,6 @@ private:
 	bool			m_runningBeforeSleep = false;
 
 	int	m_scrcpyRetryCount = 0;
+
+	std::thread	m_threadScreenshot;
 };

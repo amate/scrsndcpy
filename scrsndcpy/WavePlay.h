@@ -41,7 +41,7 @@ private:
 	void	_BufferConsume();
 
 	enum {
-		kForceBufferClearSampleCount = 10000,
+		//kForceBufferClearSampleCount = 10000,	// m_maxBufferSampleCount * 2;�ɕύX
 	};
 
 	CComPtr<IAudioClient3> m_spAudioClient;

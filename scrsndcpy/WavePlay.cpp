@@ -353,7 +353,7 @@ void WavePlay::_BufferConsume()
 	int i = 0;
 	int minSample = INT_MAX;
 	int maxSample = 0;
-	int adjustBufferCount = 0;
+	int dropSample = 0;
 	int playSample = 0;
 	while (!m_exit) {
 		UINT32	numFramesAvailable = 0;
@@ -430,14 +430,16 @@ void WavePlay::_BufferConsume()
 
 				// バッファ調整
 				const int kMaxBufferSample = m_maxBufferSampleCount;//bufferFrameCount * 2;
+				const int kForceBufferClearSampleCount = m_maxBufferSampleCount * 2;
 				if (kForceBufferClearSampleCount < maxSample) {
 					WARN_LOG << L"m_buffer.clear() - kForceBufferClearSampleCount < maxSample";
+					dropSample += static_cast<int>(m_buffer.length());
 					m_buffer.clear();
 
 				} else if (kMaxBufferSample < maxSample) {
 					bufferSize += m_frameSize * 1;	// 1 sample分余計に削除する
 					//INFO_LOG << L"buff erase, maxSample:" << maxSample;
-					++adjustBufferCount;
+					++dropSample;
 					--maxSample;
 				}
 			}
@@ -454,15 +456,15 @@ void WavePlay::_BufferConsume()
 		if (elapsed >= 1000) {
 #ifdef _DEBUG
 			//INFO_LOG << L"bufferSampleCount: " << bufferSampleCount << L" \ti: " << i  << L" playSample: " << playSample
-			//		<< L" min: " << minSample << L" \tmax: " << maxSample << L" \tadjustBufferCount: " << adjustBufferCount;
+			//		<< L" min: " << minSample << L" \tmax: " << maxSample << L" \tdropSample: " << dropSample;
 #endif
-			::PostMessage(m_hWndMainDlg, CMainDlg::WM_WAVEPlAY_INFO, MAKELONG(playSample, adjustBufferCount), MAKELONG(minSample, maxSample));
+			::PostMessage(m_hWndMainDlg, CMainDlg::WM_WAVEPlAY_INFO, MAKELONG(playSample, dropSample), MAKELONG(minSample, maxSample));
 
 			prevTime = nowTime;
 			i = 0;
 			minSample = INT_MAX;
 			maxSample = 0;
-			adjustBufferCount = 0;
+			dropSample = 0;
 			playSample = 0;
 		}
 	}

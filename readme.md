@@ -130,6 +130,10 @@ v1.4
 ・[change] C++14からC++17へ更新
 ・[add] スクリーンショット機能を追加 (Screenshotボタン右クリックで保存先フォルダを開きます)
 
+・[change] スクリーンショットを別スレッドで実行するように変更
+・[change] sndcpyへの接続リトライ数を10から15に変更 (リトライ時は6とか7回目に接続されることがあるので)
+・[change] m_buffer.clear()の処理は、"(m_maxBufferSampleCount * 2) < maxSample"となったときに変更 (今までより早くバッファがクリアされるようになった)
+
 v1.3
 ・[update] scrcpyを 1.24 に更新
 ・[update] sndcpyを 1.1 に更新
