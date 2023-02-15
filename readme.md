@@ -1,7 +1,7 @@
 
 # scrsndcpy
 
-![](https://raw.githubusercontent.com/amate/scrsndcpy/images/images/ss2.png)
+![](https://raw.githubusercontent.com/amate/scrsndcpy/images/images/ss3.png)
 
 ## ■はじめに
 このソフトは、USB(もしくはWi-Fi)で接続されたAndroidデバイスの画面と音声を、PC上でミラーリングするために作られました
@@ -31,6 +31,8 @@ Configから"デバイスへWi-Fi経由での接続を行えるようにする"�
 すると、デバイス側がWi-Fi経由での接続を待ち受けるようになるので、Device listから"192.168.0.x:5555"を選択した後に"Screen Sound Copy"ボタンを押せばミラーリングが開始されます  
 
 画面の位置を記憶するには、Ctrlキーを押しながら"Streaming"ボタンを押してください
+
+"Screenshot"ボタンを右クリックで保存フォルダを開きます
 
 ## ■設定
 
@@ -113,7 +115,7 @@ Visual Studio 2019で "scrsndcpy.sln"を開き、
 デバッグ->デバッグの開始 を実行すれば、vcpkgがライブラリの準備をした後、実行ファイルが生成されます
 
 ## ■著作権表示
-Copyright (C) 2021-2022 amate
+Copyright (C) 2021-2023 amate
 
 自分が書いた部分のソースコードは、MIT Licenseとします
 
@@ -135,6 +137,7 @@ v1.4
 ・[change] m_buffer.clear()の処理は、"(m_maxBufferSampleCount * 3) < maxSample"となったときに変更 (今までより早くバッファがクリアされるようになった)
 
 ・[change] 音声の再生は scrcpy.exe側で行うようにした
+・[update] scrcpyを 1.25 に更新
 
 v1.3
 ・[update] scrcpyを 1.24 に更新
