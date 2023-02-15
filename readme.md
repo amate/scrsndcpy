@@ -8,6 +8,9 @@
 
 実質的には[scrcpy](https://github.com/Genymobile/scrcpy)、[sndcpy](https://github.com/rom1v/sndcpy)を合体させただけです  
 
+ダウンロードはこちらから  
+https://github.com/amate/scrsndcpy/releases/latest
+
 ## ■動作環境
 ・Windows10 home 64bit バージョン 20H2  
 ※64bit版でしか動作しません
