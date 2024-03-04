@@ -11,6 +11,9 @@ enum DelayFrameCommand {
 	kStartSndcpy = 1,
 	kRestartSndcpy,
 	kWakefulness,
+
+	kHankakuZenkaku,
+	kCtrlEnter,
 };
 
 struct SharedMemoryData

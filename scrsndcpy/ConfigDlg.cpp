@@ -9,13 +9,14 @@
 using json = nlohmann::json;
 using namespace CodeConvert;
 
-ConfigDlg::ConfigDlg(Config& config) : m_config(config)
+ConfigDlg::ConfigDlg(Config& config) : m_config(config), m_radioAudioScrcpy(0)
 {
 }
 
 LRESULT ConfigDlg::OnInitDialog(UINT, WPARAM, LPARAM, BOOL&)
 {
 	m_tempConfig = m_config;
+	m_radioAudioScrcpy = m_tempConfig.useScrcpyAudio ? 0 : 1;
 
 	m_loginPassword = UTF16fromUTF8(m_tempConfig.loginPassword).c_str();
 
@@ -31,6 +32,8 @@ LRESULT ConfigDlg::OnOK(WORD, WORD wID, HWND, BOOL&)
 	}
 
 	m_tempConfig.loginPassword = UTF8fromUTF16((LPCWSTR)m_loginPassword);
+
+	m_tempConfig.useScrcpyAudio = (m_radioAudioScrcpy == 0);
 
 	m_config = m_tempConfig;
 	m_config.SaveConfig();

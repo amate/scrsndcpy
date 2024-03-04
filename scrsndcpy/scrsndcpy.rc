@@ -52,15 +52,16 @@ BEGIN
     PUSHBUTTON      "Config",IDC_BUTTON_CONFIG,137,42,60,18
     EDITTEXT        IDC_EDIT_WAVEPLAYINFO,0,122,228,12,ES_AUTOHSCROLL
     PUSHBUTTON      "Screenshot",IDC_BUTTON_SCREENSHOT,6,65,60,18
+    CONTROL         "Native resolution",IDC_CHECK_NATIVE_RESOLUTION,"Button",BS_AUTOCHECKBOX | BS_PUSHLIKE | WS_TABSTOP,72,64,60,19
 END
 
-IDD_CONFIG DIALOGEX 0, 0, 217, 323
+IDD_CONFIG DIALOGEX 0, 0, 421, 228
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Config"
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
-    DEFPUSHBUTTON   "OK",IDOK,98,300,50,14
-    PUSHBUTTON      "キャンセル",IDCANCEL,160,300,50,14
+    DEFPUSHBUTTON   "OK",IDOK,307,205,50,14
+    PUSHBUTTON      "キャンセル",IDCANCEL,364,205,50,14
     CONTROL         "起動時に[Screen Sound Copy]を実行する",IDC_CHECK_AUTO_START,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,12,6,156,12
     LTEXT           "自動ログインパスワード：",IDC_STATIC,12,23,78,8
@@ -75,21 +76,21 @@ BEGIN
     LTEXT           "Mbps",IDC_STATIC,93,112,24,8
     CONTROL         "ミラーリングの開始時にデバイスの画面をOFFにする",IDC_CHECK_TURN_SCREEN_OFF,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,18,186,168,12
-    GROUPBOX        "sndcpy",IDC_STATIC,12,222,195,74
-    LTEXT           "バッファサイズの倍数：",IDC_STATIC,24,234,71,8
-    EDITTEXT        IDC_EDIT_BUFFER_MULTIPLE,94,232,20,12,ES_AUTOHSCROLL | ES_NUMBER
-    LTEXT           "バッファの最大サンプル数：",IDC_STATIC,24,248,84,8
-    EDITTEXT        IDC_EDIT_MAXBUFFERSAMPLECOUNT,108,246,30,12,ES_AUTOHSCROLL | ES_NUMBER
+    GROUPBOX        "sndcpy",IDC_STATIC,212,117,195,75
+    LTEXT           "バッファサイズの倍数：",IDC_STATIC,224,129,71,8
+    EDITTEXT        IDC_EDIT_BUFFER_MULTIPLE,294,127,20,12,ES_AUTOHSCROLL | ES_NUMBER
+    LTEXT           "バッファの最大サンプル数：",IDC_STATIC,224,143,84,8
+    EDITTEXT        IDC_EDIT_MAXBUFFERSAMPLECOUNT,308,141,30,12,ES_AUTOHSCROLL | ES_NUMBER
     CONTROL         "ミラーリングの開始時にデバイスの音声をミュートする",IDC_CHECK_DEVICE_MUTE_ON_START,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,18,264,174,12
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,218,159,174,12
     LTEXT           "再生を遅らせるフレーム数：",IDC_STATIC,22,127,88,8
     EDITTEXT        IDC_EDIT_DELAY_FRAME_COUNT,110,125,22,12,ES_AUTOHSCROLL | ES_NUMBER
     LTEXT           "(0~10000)",IDC_STATIC,96,80,35,8
     LTEXT           "(0~120)",IDC_STATIC,96,97,35,8
     LTEXT           "(0~50)",IDC_STATIC,116,112,35,8
     LTEXT           "(0~100)",IDC_STATIC,137,127,35,8
-    LTEXT           "(1~10)",IDC_STATIC,119,234,35,8
-    LTEXT           "(0~48000)",IDC_STATIC,143,247,35,8
+    LTEXT           "(1~10)",IDC_STATIC,320,129,35,8
+    LTEXT           "(0~48000)",IDC_STATIC,344,142,35,8
     CONTROL         "デバイスへWi-Fi経由での接続を行えるようにする",IDC_CHECK_AUTO_WIFI_CONNECT,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,12,37,168,12
     LTEXT           "ビデオバッファ：",IDC_STATIC,21,141,46,8
@@ -97,10 +98,17 @@ BEGIN
     LTEXT           "ms  (0~1000)",IDC_STATIC,103,141,48,8
     LTEXT           "※ビデオバッファと再生を遅らせるフレーム数を\n同時に指定すると、映像が乱れることがあります\n(どちらか一方を 0 にしてください)",IDC_STATIC,20,156,166,28
     CONTROL         "toggle muteで、PCとデバイスのミュート状態を反転させる",IDC_CHECK_TOGGLE_MUTE_REVERSE,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,17,279,186,14
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,218,174,186,14
     CONTROL         "画面のリサイズを禁止する",IDC_CHECK_NO_RESIZE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,17,202,96,12
     CONTROL         "スリープからの復帰時に自動的にデバイスへ再接続する",IDC_CHECK_RECONNECT_ON_RESUME,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,11,51,184,12
+    GROUPBOX        "音声の出力方法",IDC_STATIC,212,67,195,46
+    CONTROL         "scrcpy内臓方式(※デバイスから音は出なくなります)",IDC_RADIO_AUDIO_SCRCPY,
+                    "Button",BS_AUTORADIOBUTTON | WS_GROUP,223,80,175,12
+    CONTROL         "sndcpyを別途実行",IDC_RADIO_AUDIO_SNDCPY,"Button",BS_AUTORADIOBUTTON,223,95,85,12
+    CONTROL         "デバイス側で物理的なHIDキーボードをシミュレートします",IDC_CHECK_ENABLE_UHID,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,211,11,188,12
+    LTEXT           "※デバイス側で物理キーボードのレイアウト設定が必要です\n設定ページの開き方\n1：""My device""ウィンドウをアクティブにして Alt+Kキー\n2：デバイスの設定→システム→言語と入力→物理デバイス",IDC_STATIC,220,24,188,37
 END
 
 
@@ -130,9 +138,9 @@ BEGIN
     IDD_CONFIG, DIALOG
     BEGIN
         LEFTMARGIN, 7
-        RIGHTMARGIN, 210
+        RIGHTMARGIN, 414
         TOPMARGIN, 7
-        BOTTOMMARGIN, 314
+        BOTTOMMARGIN, 219
     END
 END
 #endif    // APSTUDIO_INVOKED

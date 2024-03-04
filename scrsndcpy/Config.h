@@ -8,6 +8,8 @@ struct Config
 	std::string	loginPassword;
 	bool	autoWifiConnect = false;
 	bool	reconnectOnResume = false;
+	bool	enableUHID = false;
+	bool	useScrcpyAudio = true;
 
 	// scrcpy
 	int		maxSize = 0;

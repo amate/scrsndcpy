@@ -154,6 +154,7 @@ LRESULT CMainDlg::OnInitDialog(UINT, WPARAM, LPARAM, BOOL&)
 	m_sliderVolume.SetRange(0, 100);
 	m_sliderVolume.SetPos(kMaxVolume - 50);
 
+
 	try {
 		std::ifstream fs((GetExeDirectory() / "setting.json").string());
 		if (fs) {
@@ -405,6 +406,24 @@ LRESULT CMainDlg::OnDelayFrameCommand(UINT uMsg, WPARAM wParam, LPARAM lParam)
 		return FALSE;
 	}
 
+	case kHankakuZenkaku:
+	{
+		// https://developer.android.com/reference/android/view/KeyEvent.html#constants
+		// KEYCODE_LANGUAGE_SWITCH
+		// Key code constant: Language Switch key. 
+		
+		//std::string outret = _SendADBCommand(L"shell input keyevent KEYCODE_ZENKAKU_HANKAKU");
+		//PUTLOG(L"language switch");
+	}
+	break;
+
+	case kCtrlEnter:
+	{
+		std::string outret = _SendADBCommand(L"shell input touchscreen tap 1 1");
+		PUTLOG(L"Ctrl+Enter: touchscreen tap 1 1");
+	}
+	break;
+
 	default:
 	{
 		ATLASSERT(FALSE);
@@ -467,6 +486,8 @@ LRESULT CMainDlg::OnScreenSoundCopy(WORD, WORD wID, HWND, BOOL&)
 		std::wstring deviceSerial = UTF16fromUTF8(m_deviceList[index]);
 		m_currentDeviceSerial = deviceSerial;
 
+		DoDataExchange(DDX_SAVE, IDC_CHECK_NATIVE_RESOLUTION);
+
 		// scrcpy
 		bool success = _ScrcpyStart();
 		if (!success) {
@@ -517,11 +538,20 @@ LRESULT CMainDlg::OnScreenSoundCopy(WORD, WORD wID, HWND, BOOL&)
 		}
 	
 		// sndcpy
-		_SndcpyAutoPermission();
+		if (m_config.useScrcpyAudio) {
+			// 内臓を使うのでボタンを無効化しておく
+			GetDlgItem(IDC_BUTTON_MANUAL_SNDCPY).EnableWindow(FALSE);
 
-		if (m_config.deviceMuteOnStart) {
-			_SendCommonAdbCommand("Mute");
+		} else {
+			GetDlgItem(IDC_BUTTON_MANUAL_SNDCPY).EnableWindow(TRUE);
+			_SndcpyAutoPermission();
+
+			if (m_config.deviceMuteOnStart) {
+				_SendCommonAdbCommand("Mute");
+			}
 		}
+
+		m_checkSSC.SetWindowTextW(L"Streaming...");
 	}
 	return 0;
 }
@@ -614,6 +644,19 @@ void CMainDlg::OnScreenShotButtonUp(UINT nFlags, CPoint point)
 	//	ssFolderPath = m_config.screenShotFolder;
 	//}
 	::ShellExecute(NULL, NULL, ssFolderPath.c_str(), NULL, NULL, SW_NORMAL);
+}
+
+void CMainDlg::OnResolutionChange(UINT uNotifyCode, int nID, CWindow wndCtl)
+{
+	if (m_scrcpyProcess.IsRunning()) {
+		// 停止
+		_StopStreaming();
+
+		// 起動
+		OnRunScrsndcpy(0, 0, 0);
+	} else {
+
+	}	
 }
 
 void CMainDlg::OnConfig(UINT uNotifyCode, int nID, CWindow wndCtl)
@@ -1057,6 +1100,7 @@ void CMainDlg::_DoSoundStreaming()
 	if (!m_scrcpyProcess.IsRunning() || !m_sharedMemoryData) {
 		return;
 	}
+
 	m_sharedMemoryData->streamingReady = true;
 	return;
 
@@ -1276,14 +1320,14 @@ std::wstring CMainDlg::_BuildScrcpyCommandLine()
 {
 	// 	std::wstring scrcpyCommandLine = LR"(  --turn-screen-off --window-title "My device" --shortcut-mod=lctrl,lalt,ralt,rctrl --window-x 1920 --window-y 30  --max-fps 30 --max-size 1280 --bit-rate 20M )
 	std::wstring commandLine = UTF16fromUTF8(m_jsonCommon["Common"]["Scrcpy"]["CommandLine"].get<std::string>());
-	if (m_config.maxSize > 0) {
+	if (m_config.maxSize > 0 && !m_nativeResolution) {
 		commandLine += L" --max-size " + std::to_wstring(m_config.maxSize);
 	}
 	if (m_config.maxFPS > 0) {
 		commandLine += L" --max-fps " + std::to_wstring(m_config.maxFPS);
 	}
 	if (m_config.bitrate > 0) {
-		commandLine += L" --bit-rate " + std::to_wstring(m_config.bitrate) + L"M";
+		commandLine += L" --video-bit-rate " + std::to_wstring(m_config.bitrate) + L"M";
 	}
 	if (m_config.turnScreenOff) {
 		commandLine += L"  --turn-screen-off ";
@@ -1294,6 +1338,12 @@ std::wstring CMainDlg::_BuildScrcpyCommandLine()
 	}
 	if (m_config.videoBuffer_ms > 0) {
 		commandLine += L" --display-buffer=" + std::to_wstring(m_config.videoBuffer_ms);
+	}
+	if (m_config.enableUHID) {
+		commandLine += L" --keyboard=uhid ";
+	}
+	if (!m_config.useScrcpyAudio) {
+		commandLine += L" --no-audio ";
 	}
 
 	return commandLine;

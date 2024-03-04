@@ -78,6 +78,7 @@ public:
 		DDX_CONTROL_HANDLE(IDC_CHECK_SCREENSOUNDCOPY, m_checkSSC)
 		DDX_CONTROL_HANDLE(IDC_SLIDER_VOLUME , m_sliderVolume)
 		DDX_CONTROL(IDC_BUTTON_SCREENSHOT, m_wndScreenShotButton)
+		DDX_CHECK(IDC_CHECK_NATIVE_RESOLUTION, m_nativeResolution)
 	END_DDX_MAP()
 
 	BEGIN_MSG_MAP_EX(CMainDlg)
@@ -97,6 +98,7 @@ public:
 		COMMAND_ID_HANDLER_EX(IDC_BUTTON_TOGGLE_MUTE, OnToggleMute)
 		COMMAND_ID_HANDLER_EX(IDC_BUTTON_MANUAL_SNDCPY, OnManualSndcpy)
 		COMMAND_ID_HANDLER_EX(IDC_BUTTON_SCREENSHOT, OnScreenshot)
+		COMMAND_ID_HANDLER_EX(IDC_CHECK_NATIVE_RESOLUTION, OnResolutionChange)
 
 		COMMAND_ID_HANDLER_EX(IDC_BUTTON_CONFIG, OnConfig)
 		MSG_WM_VSCROLL(OnTrackberVScroll)
@@ -127,6 +129,7 @@ public:
 	void	OnManualSndcpy(UINT uNotifyCode, int nID, CWindow wndCtl);
 	void	OnScreenshot(UINT uNotifyCode, int nID, CWindow wndCtl);
 	void	OnScreenShotButtonUp(UINT nFlags, CPoint point);
+	void	OnResolutionChange(UINT uNotifyCode, int nID, CWindow wndCtl);
 	void	OnConfig(UINT uNotifyCode, int nID, CWindow wndCtl);
 
 	void	OnTrackberVScroll(UINT nSBCode, UINT nPos, CScrollBar pScrollBar);
@@ -153,6 +156,7 @@ private:
 	CComboBox		m_cmbDevices;
 	CTrackBarCtrl	m_sliderVolume;
 	int		m_prevVolume = 0;
+	bool	m_nativeResolution = false;
 
 	CContainedWindow	m_wndScreenShotButton;
 

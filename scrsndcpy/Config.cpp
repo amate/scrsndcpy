@@ -42,6 +42,8 @@ bool Config::LoadConfig()
 	}
 	autoWifiConnect = jsonSetting["Config"].value("AutoWifiConnect", autoWifiConnect);
 	reconnectOnResume = jsonSetting["Config"].value("ReconnectOnResume", reconnectOnResume);
+	enableUHID = jsonSetting["Config"].value("EnableUHID", enableUHID);
+	useScrcpyAudio = jsonSetting["Config"].value("UseScrcpyAudio", useScrcpyAudio);
 
 	// scrcpy
 	maxSize = jsonSetting["Config"].value("MaxSize", maxSize);
@@ -81,6 +83,8 @@ void Config::SaveConfig()
 	jsonSetting["Config"]["LoginPassword"] = obfuPass;
 	jsonSetting["Config"]["AutoWifiConnect"] = autoWifiConnect;
 	jsonSetting["Config"]["ReconnectOnResume"] = reconnectOnResume;
+	jsonSetting["Config"]["EnableUHID"] = enableUHID;
+	jsonSetting["Config"]["UseScrcpyAudio"] = useScrcpyAudio;
 
 	jsonSetting["Config"]["MaxSize"] = maxSize;
 	jsonSetting["Config"]["MaxFPS"] = maxFPS;

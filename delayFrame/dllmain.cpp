@@ -19,11 +19,13 @@
 #include "Socket.h"
 #include "WavePlay.h"
 
+#pragma comment(lib, "Imm32.lib")
+
 using namespace std::chrono;
 namespace fs = boost::filesystem;
 
-constexpr LPCSTR kavutil_dllNameA = "avutil-57.dll";
-constexpr LPCWSTR kavutil_dllNameW = L"avutil-57.dll";
+constexpr LPCSTR kavutil_dllNameA = "avutil-58.dll";
+constexpr LPCWSTR kavutil_dllNameW = L"avutil-58.dll";
 
 // 前方宣言
 struct AVFrame;
@@ -35,6 +37,8 @@ HMODULE g_hModule;
 std::queue<AVFrame*>   g_delayFrameQue;
 uint32_t    g_delayFrameCount = 0;
 SharedMemoryData*    g_sharedMemoryData;
+
+bool	g_jpLocale = false;
 
 
 #define PUTLOG	PutLog
@@ -137,13 +141,22 @@ public:
 
 				int reconnectCount = 0;
 				auto funcReConnect = [&, this]() -> bool {
-					++reconnectCount;
-					PUTLOG(L"ReConnect: %d", reconnectCount);
-					BOOL ret = ::SendMessage(g_sharedMemoryData->hwndMainDlg, WM_DELAYFRAME_COMMAND, kRestartSndcpy, 0);
-					ATLASSERT(ret);
-					//std::string outret = _SendADBCommand(L"shell am start com.rom1v.sndcpy/.MainActivity --activity-clear-top"); // お試し --activity-clear-top
 
-					return funcConnect();
+					enum { kMaxReconnectRetryCount = 3 };
+					for (int i = 0; i < kMaxReconnectRetryCount; ++i) {
+						++reconnectCount;
+						PUTLOG(L"ReConnect: %d", reconnectCount);
+						BOOL ret = ::SendMessage(g_sharedMemoryData->hwndMainDlg, WM_DELAYFRAME_COMMAND, kRestartSndcpy, 0);
+						ATLASSERT(ret);
+						//std::string outret = _SendADBCommand(L"shell am start com.rom1v.sndcpy/.MainActivity --activity-clear-top"); // お試し --activity-clear-top
+
+						bool success = funcConnect();
+						if (success) {
+							return true;
+						}
+					}
+
+					return false;
 				};
 
 				using namespace std::chrono;
@@ -363,7 +376,21 @@ int 	Replaced_SDL_WaitEvent(SDL_Event* event)
                 OutputDebugStringW(L"Replaced_SDL_WaitEvent: Ctrl+G\n");
             }
         }
-    }
+	} else if (event->type == SDL_KEYDOWN) {
+		if (event->key.keysym.scancode == SDL_SCANCODE_GRAVE) {
+			if (g_jpLocale) {
+				OutputDebugStringW(L"Replaced_SDL_WaitEvent: 半角/全角\n");
+				BOOL ret = ::PostMessage(g_sharedMemoryData->hwndMainDlg, WM_DELAYFRAME_COMMAND, kHankakuZenkaku, 0);
+			}
+		} else if (event->key.keysym.scancode == SDL_SCANCODE_RETURN) {
+			if (event->key.keysym.mod & KMOD_CTRL)	{
+				OutputDebugStringW(L"Replaced_SDL_WaitEvent: Ctrl+Enter\n");
+				BOOL ret = ::PostMessage(g_sharedMemoryData->hwndMainDlg, WM_DELAYFRAME_COMMAND, kCtrlEnter, 0);
+			}
+		}
+	}
+
+
     return ret;
 }
 
@@ -431,6 +458,18 @@ void    Init()
     assert(g_sharedMemoryData);
     g_delayFrameCount = g_sharedMemoryData->delayFrameCount;
     OutputDebugStringW((std::wstring(L"delayFrameCount: " + std::to_wstring(g_delayFrameCount) + L"\n").c_str()));
+
+	// IME Disable
+	BOOL ret3 = ImmDisableIME(-1);
+	OutputDebugStringW((std::wstring(L"ImmDisableIME: " + std::to_wstring(ret3) + L"\n").c_str()));
+
+	WCHAR defaultLocaleName[LOCALE_NAME_MAX_LENGTH + 1] = L"";
+	GetUserDefaultLocaleName(defaultLocaleName, LOCALE_NAME_MAX_LENGTH);
+	OutputDebugStringW((std::wstring(L"GetUserDefaultLocaleName: " + std::wstring(defaultLocaleName) + L"\n").c_str()));
+
+	if (::_wcsicmp(defaultLocaleName, L"ja-JP") == 0) {
+		g_jpLocale = true;
+	}
 
     //::UnmapViewOfFile((LPCVOID)pDelayFrameCount);
     //::CloseHandle(hFilemap);

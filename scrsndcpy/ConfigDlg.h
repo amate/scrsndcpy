@@ -20,6 +20,8 @@ public:
 		DDX_TEXT(IDC_EDIT_LOGIN_PASSWORD, m_loginPassword)
 		DDX_CHECK(IDC_CHECK_AUTO_WIFI_CONNECT, m_tempConfig.autoWifiConnect)
 		DDX_CHECK(IDC_CHECK_RECONNECT_ON_RESUME, m_tempConfig.reconnectOnResume)
+		DDX_CHECK(IDC_CHECK_ENABLE_UHID, m_tempConfig.enableUHID)		
+		DDX_RADIO(IDC_RADIO_AUDIO_SCRCPY, m_radioAudioScrcpy)
 
 		DDX_INT_RANGE(IDC_EDIT_MAX_SIZE, m_tempConfig.maxSize, 0, 10000)
 		DDX_INT_RANGE(IDC_EDIT_MAX_FPS, m_tempConfig.maxFPS, 0, 120)
@@ -57,5 +59,6 @@ private:
 
 	CString		m_loginPassword;
 	Config		m_tempConfig;
+	int			m_radioAudioScrcpy;
 
 };

@@ -34,6 +34,11 @@
 #define IDC_CHECK_TOGGLE_MUTE_REVERSE   1019
 #define IDC_CHECK_NO_RESIZE             1020
 #define IDC_CHECK_RECONNECT_ON_RESUME   1021
+#define IDC_CHECK_NATIVE_RESOLUTION     1021
+#define IDC_RADIO_AUDIO_SCRCPY          1022
+#define IDC_RADIO_AUDIO_SNDCPY          1023
+#define IDC_CHECK_ENABLE_               1024
+#define IDC_CHECK_ENABLE_UHID           1024
 
 // Next default values for new objects
 // 
@@ -41,7 +46,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        205
 #define _APS_NEXT_COMMAND_VALUE         32775
-#define _APS_NEXT_CONTROL_VALUE         1021
+#define _APS_NEXT_CONTROL_VALUE         1025
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif
