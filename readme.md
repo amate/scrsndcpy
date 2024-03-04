@@ -55,10 +55,17 @@ PC側のキーボードがまるでデバイス側に接続されているかの
 正常に動作させるためには、デバイス側で物理キーボードのレイアウト設定が必要です  
 
 設定ページの開き方  
+
 - "My device"ウィンドウをアクティブにして、 Alt+Kキーを押す
 - デバイスの設定->システム->言語と入力->物理デバイス  
+
 上記のどちらかを実行し、
 
+<img src="https://raw.githubusercontent.com/amate/scrsndcpy/images/images/uhid1.png" width="300px">
+<img src="https://raw.githubusercontent.com/amate/scrsndcpy/images/images/uhid2.png" width="300px">
+<img src="https://raw.githubusercontent.com/amate/scrsndcpy/images/images/uhid3.png" width="300px">
+
+上記の画像のようにキーボードレイアウトを設定してください
 
 
 ## ■アンインストールの方法
