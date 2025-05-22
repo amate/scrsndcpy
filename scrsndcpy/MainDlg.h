@@ -146,6 +146,7 @@ private:
 	std::wstring	_BuildScrcpyCommandLine();
 	HWND			_FindScrcpyWindow();
 	std::string		_SendCommonAdbCommand(const std::string& commandName, std::string deviceSerial = "");
+	void			_DoCustomAdbCommand();
 
 	void CloseDialog(int nVal);
 

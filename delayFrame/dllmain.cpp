@@ -18,14 +18,15 @@
 
 #include "Socket.h"
 #include "WavePlay.h"
+#include "VolumeControl.h"
 
 #pragma comment(lib, "Imm32.lib")
 
 using namespace std::chrono;
 namespace fs = boost::filesystem;
 
-constexpr LPCSTR kavutil_dllNameA = "avutil-58.dll";
-constexpr LPCWSTR kavutil_dllNameW = L"avutil-58.dll";
+constexpr LPCSTR kavutil_dllNameA = "avutil-59.dll";
+constexpr LPCWSTR kavutil_dllNameW = L"avutil-59.dll";
 
 // 前方宣言
 struct AVFrame;
@@ -39,6 +40,8 @@ uint32_t    g_delayFrameCount = 0;
 SharedMemoryData*    g_sharedMemoryData;
 
 bool	g_jpLocale = false;
+
+std::unique_ptr<CVolumeControl>	g_pVolumeControl;
 
 
 #define PUTLOG	PutLog
@@ -350,17 +353,34 @@ int 	Replaced_SDL_WaitEvent(SDL_Event* event)
     }
 #endif
 
+	// sndcpy
 	if (g_sharedMemoryData->streamingReady) {
 		PUTLOG(L"streamingReady");
 		g_streamingSoundPlay = std::make_unique<StreamingSoundPlay>();
 		g_streamingSoundPlay->ConnectAndPlay();
 		g_sharedMemoryData->streamingReady = false;
 	}
-
 	if (g_streamingSoundPlay) {
 		const int volume = g_streamingSoundPlay->GetVolume();
 		if (volume != g_sharedMemoryData->playSoundVolume) {
 			g_streamingSoundPlay->SetVolume(g_sharedMemoryData->playSoundVolume);
+		}
+	}
+
+	// scrcpy内臓
+	if (g_sharedMemoryData->simpleAudioReady) {
+		g_pVolumeControl = std::make_unique<CVolumeControl>();
+		bool success = g_pVolumeControl->InitVolumeControl();
+		PUTLOG(L"InitVolumeControl : %s", success ? L"success!" : L"failed...");
+		if (success) {
+			g_pVolumeControl->SetVolume(g_sharedMemoryData->playSoundVolume);
+		}
+		g_sharedMemoryData->simpleAudioReady = false;
+	}
+	if (g_pVolumeControl) {
+		const int volume = g_pVolumeControl->GetVolume();
+		if (volume != g_sharedMemoryData->playSoundVolume) {
+			g_pVolumeControl->SetVolume(g_sharedMemoryData->playSoundVolume);
 		}
 	}
 

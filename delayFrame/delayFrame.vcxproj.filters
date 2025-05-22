@@ -48,6 +48,9 @@
     <ClInclude Include="..\scrsndcpy\Utility\Logger.h">
       <Filter>Source Files\Utility</Filter>
     </ClInclude>
+    <ClInclude Include="VolumeControl.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Source Files">

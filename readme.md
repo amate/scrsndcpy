@@ -143,6 +143,15 @@ Copyright (C) 2021-2024 amate
 
 <pre>
 
+v1.9
+・[update] scrcpyを v3.2に更新
+・[add] scrcpyの更新で、音声出力がscrcpy内蔵方式でもデバイス側から音を出せるようになった(デバイスのandroidバージョンが13以降の場合)
+・[change] scrcpy内蔵の音声出力で音量を調整できるようにした
+・[fix] WM_RUNSCRSNDCPY受信時に、既にscrcpyを実行していれば無視するようにした
+・[add] 同一フォルダ内に "デバイスのserial名.txt"が存在するときに、txtに書かれた adbコマンドを実行するようにした
+・[fix] scrcpyのウィンドウを閉じたり、スリープから復帰したときに、scrsndcpyがフリーズするバグを修正
+・[misc] display-buffer が video-buffer に変更になったので修正
+
 v1.5
 ・[update] scrcpyを v2.4に更新
 ・[add] デバイス側で物理的なHIDキーボードをシミュレートする設定を追加

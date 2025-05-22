@@ -24,6 +24,7 @@ struct SharedMemoryData
 	HWND	hwndMainDlg;
 
 	bool	streamingReady;
+	bool	simpleAudioReady;
 	int		bufferMultiple;
 	int		maxBufferSampleCount;
 	int		playSoundVolume;

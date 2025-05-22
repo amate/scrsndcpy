@@ -451,6 +451,11 @@ LRESULT CMainDlg::OnRunScrsndcpy(UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
 	PUTLOG(L"OnRunScrsndcpy");
 
+	if (m_scrcpyProcess.IsRunning()) {
+		PUTLOG(L"m_scrcpyProcess.IsRunning() == true : cancelします");
+		return 0;
+	}
+
 	ATLASSERT(m_checkSSC.GetCheck() == BST_UNCHECKED);
 	ATLASSERT(!m_scrcpyProcess.IsRunning());
 	m_checkSSC.SetCheck(BST_CHECKED);
@@ -541,17 +546,24 @@ LRESULT CMainDlg::OnScreenSoundCopy(WORD, WORD wID, HWND, BOOL&)
 		if (m_config.useScrcpyAudio) {
 			// 内臓を使うのでボタンを無効化しておく
 			GetDlgItem(IDC_BUTTON_MANUAL_SNDCPY).EnableWindow(FALSE);
+			enum { kAudioDupOkAndroidVersion = 13 };
+			if (kAudioDupOkAndroidVersion <= m_currentDeviceAndroidVersion) {
+				::Sleep(1000);
+				m_sharedMemoryData->simpleAudioReady = true;
+			}
 
 		} else {
 			GetDlgItem(IDC_BUTTON_MANUAL_SNDCPY).EnableWindow(TRUE);
 			_SndcpyAutoPermission();
-
-			if (m_config.deviceMuteOnStart) {
-				_SendCommonAdbCommand("Mute");
-			}
+		}
+		if (m_config.deviceMuteOnStart) {
+			_SendCommonAdbCommand("Mute");
 		}
 
 		m_checkSSC.SetWindowTextW(L"Streaming...");
+
+		// カスタムコマンドを実行する
+		_DoCustomAdbCommand();
 	}
 	return 0;
 }
@@ -842,6 +854,8 @@ bool CMainDlg::_ScrcpyStart()
 	auto mtx = std::make_shared<std::mutex>();
 	auto cond = std::make_shared<std::condition_variable>();
 
+	auto firstTextureNotify = std::make_shared<bool>(true);
+
 	m_scrcpyProcess.RegisterStdOutCallback([=](const std::string& text) {
 		
 		std::string log = text;
@@ -870,30 +884,49 @@ bool CMainDlg::_ScrcpyStart()
 			notify->emplace(false);
 			cond->notify_all();
 
-		} else if (log.find("New texture") != std::string::npos) {
-			//  INFO: New texture: 1280x800
-			std::string strSize = log.substr(19);
-			auto xPos = strSize.find("x");
-			ATLASSERT(xPos != std::string::npos);
-			std::string strWidth = strSize.substr(0, xPos);
-			std::string strHeight = strSize.substr(xPos + 1);
-			int width = std::stoi(strWidth);
-			int height = std::stoi(strHeight);
-			if (width > height) {
-				// 横画面になったとき
-				CWindow hwndScrcpy = _FindScrcpyWindow();
-				if (!hwndScrcpy) {
-					PUTLOG(L"Scrcpyのウィンドウが見つかりません...");
-					return;
-				}
-				ATLASSERT(m_sharedMemoryData);
-				if (m_sharedMemoryData) {
-					// Ctrl+Gを実行する
-					PUTLOG(L"Resize window to 1:1 (pixel-perfect)");
-					m_sharedMemoryData->doEventFlag = true;
-					hwndScrcpy.SendMessageW(WM_MOUSEMOVE, 0, 0);
+		} else if (log.find("Texture: ") != std::string::npos) {
+			if (*firstTextureNotify) {
+				*firstTextureNotify = false;
+				return;		// 初回起動時に実行するとscrcpyが強制終了する
+			}
+
+			CWindow hwndScrcpy = _FindScrcpyWindow();
+			if (!hwndScrcpy) {
+				PUTLOG(L"Scrcpyのウィンドウが見つかりません...");
+				return;
+			}
+			ATLASSERT(m_sharedMemoryData);
+			if (m_sharedMemoryData) {
+				// Ctrl+Gを実行する
+				PUTLOG(L"Resize window to 1:1 (pixel-perfect)");
+				m_sharedMemoryData->doEventFlag = true;
+				hwndScrcpy.SendMessageW(WM_MOUSEMOVE, 0, 0);
+			}
+			return;
+#if 0
+			//   Texture: 1280x800
+			std::regex rx(R"(Texture: (\d+)x(\d+))");
+			std::smatch	result;
+			if (std::regex_search(log, result, rx)) {
+				int width = std::stoi(result[1].str());
+				int height = std::stoi(result[2].str());
+				if (width > height) {
+					// 横画面になったとき
+					CWindow hwndScrcpy = _FindScrcpyWindow();
+					if (!hwndScrcpy) {
+						PUTLOG(L"Scrcpyのウィンドウが見つかりません...");
+						return;
+					}
+					ATLASSERT(m_sharedMemoryData);
+					if (m_sharedMemoryData) {
+						// Ctrl+Gを実行する
+						PUTLOG(L"Resize window to 1:1 (pixel-perfect)");
+						m_sharedMemoryData->doEventFlag = true;
+						hwndScrcpy.SendMessageW(WM_MOUSEMOVE, 0, 0);
+					}
 				}
 			}
+#endif
 		}
 	});
 
@@ -921,7 +954,11 @@ bool CMainDlg::_ScrcpyStart()
 	}
 #endif
 	std::unique_lock<std::mutex> lock(*mtx);
+#ifdef _DEBUG
+	cond->wait_for(lock, std::chrono::seconds(60 * 60), [=] { return notify->has_value(); });
+#else
 	cond->wait_for(lock, std::chrono::seconds(5), [=] { return notify->has_value(); });
+#endif
 	const bool ret = notify->has_value() ? notify->value() : false /* timeout*/;
 	return ret;
 }
@@ -968,6 +1005,7 @@ bool CMainDlg::_DelayFrameInject()
 		m_sharedMemoryData->hwndMainDlg = m_hWnd;
 
 		m_sharedMemoryData->streamingReady = false;
+		m_sharedMemoryData->simpleAudioReady = false;
 		m_sharedMemoryData->bufferMultiple = m_config.bufferMultiple;
 		m_sharedMemoryData->maxBufferSampleCount = m_config.maxBufferSampleCount;
 		int soundVolume = kMaxVolume - m_sliderVolume.GetPos();
@@ -1337,13 +1375,15 @@ std::wstring CMainDlg::_BuildScrcpyCommandLine()
 					 + L" --window-y " + std::to_wstring(m_scrcpyWidowPos.y);
 	}
 	if (m_config.videoBuffer_ms > 0) {
-		commandLine += L" --display-buffer=" + std::to_wstring(m_config.videoBuffer_ms);
+		commandLine += L" --video-buffer=" + std::to_wstring(m_config.videoBuffer_ms);
 	}
 	if (m_config.enableUHID) {
 		commandLine += L" --keyboard=uhid ";
 	}
 	if (!m_config.useScrcpyAudio) {
 		commandLine += L" --no-audio ";
+	} else {
+		commandLine += L" --audio-dup ";
 	}
 
 	return commandLine;
@@ -1389,6 +1429,28 @@ std::string CMainDlg::_SendCommonAdbCommand(const std::string& commandName, std:
 	}
 	ATLASSERT(adbCommand.length());	
 	return _SendADBCommand(adbCommand, deviceSerial);
+}
+
+void CMainDlg::_DoCustomAdbCommand()
+{
+	auto customCommandTxtPath = GetExeDirectory() / (m_currentDeviceSerial + L".txt");
+	if (!fs::exists(customCommandTxtPath)) {
+		return;
+	}
+
+	std::ifstream fs(customCommandTxtPath.wstring());
+	if (!fs) {
+		ATLASSERT(FALSE);
+		return;
+	}
+
+	std::string line;
+	while (!fs.eof() && std::getline(fs, line)) {
+		std::wstring command = CodeConvert::UTF16fromUTF8(line);
+		PUTLOG(L"CustomAdbCommand: %s", command.c_str());
+		_SendADBCommand(command);
+		::Sleep(500);
+	}	
 }
 
 void CMainDlg::CloseDialog(int nVal)

@@ -177,6 +177,7 @@
     <ClInclude Include="SharedMemoryData.h" />
     <ClInclude Include="Socket.h" />
     <ClInclude Include="stdafx.h" />
+    <ClInclude Include="VolumeControl.h" />
     <ClInclude Include="WavePlay.h" />
   </ItemGroup>
   <ItemGroup>

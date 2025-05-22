@@ -33,8 +33,8 @@ bool ProcessIO::StartProcess(const std::wstring& exePath, const std::wstring& co
 		throw std::runtime_error("Stdin SetHandleInformation");
 
 	// 標準出力用のパイプハンドル作成
-	//CHandle stdoutWrite;	// 子プロセスへ渡す
-	if (!::CreatePipe(&m_stdoutRead.m_h, &m_stdoutWrite.m_h, &securityAttributes, 0))
+	CHandle stdoutWrite;	// 子プロセスへ渡す
+	if (!::CreatePipe(&m_stdoutRead.m_h, &stdoutWrite.m_h, &securityAttributes, 0))
 		throw std::runtime_error("CreatePipe failed");
 
 	// Ensure the write handle to the pipe for STDIN is not inherited. 
@@ -44,8 +44,8 @@ bool ProcessIO::StartProcess(const std::wstring& exePath, const std::wstring& co
 	STARTUPINFO startUpInfo = { sizeof(STARTUPINFO) };
 	startUpInfo.dwFlags = STARTF_USESTDHANDLES;
 	startUpInfo.hStdInput = stdinRead;
-	startUpInfo.hStdOutput = m_stdoutWrite;
-	startUpInfo.hStdError = m_stdoutWrite;
+	startUpInfo.hStdOutput = stdoutWrite;
+	startUpInfo.hStdError = stdoutWrite;
 	if (!showWindow) {
 		startUpInfo.dwFlags |= STARTF_USESHOWWINDOW;
 		startUpInfo.wShowWindow = SW_HIDE;
@@ -82,12 +82,12 @@ void ProcessIO::Terminate()
 	if (m_processThread.joinable()) {
 
 		m_threadCancel = true;
-		DWORD writeBytes = 0;
-		BOOL bRet = ::WriteFile(m_stdoutWrite, "exit", 4, &writeBytes, nullptr);
+		//DWORD writeBytes = 0;
+		//BOOL bRet = ::WriteFile(m_stdoutWrite, "exit", 4, &writeBytes, nullptr);
 
 		BOOL b = ::TerminateProcess(m_processInfo.hProcess, 0);
 
-		m_processThread.join();
+		m_processThread.detach();
 	}
 
 	if (m_processInfo.hThread) {
@@ -97,8 +97,6 @@ void ProcessIO::Terminate()
 		::CloseHandle(m_processInfo.hProcess);
 	}
 	m_processInfo = PROCESS_INFORMATION{};
-
-	m_stdoutWrite.Close();
 
 	m_stdinWrite.Close();
 	m_stdoutRead.Close();
@@ -114,6 +112,8 @@ void ProcessIO::_IOThreadMain()
 		DWORD readSize = 0;
 		BOOL bRet = ::ReadFile(m_stdoutRead, (LPVOID)buffer, kBufferSize, &readSize, nullptr);
 		if (!bRet || readSize == 0) { // EOF
+
+			DWORD error = GetLastError();
 			break;
 		}
 		if (m_threadCancel) {
@@ -126,7 +126,14 @@ void ProcessIO::_IOThreadMain()
 	INFO_LOG << L"_IOThreadMain - " << L" hProcess: " << m_processInfo.hProcess << L" - ReadFile EOF";
 
 	// 終了待ち
-	::WaitForSingleObject(m_processInfo.hProcess, INFINITE);
+	DWORD ret = ::WaitForSingleObject(m_processInfo.hProcess, 5 * 1000);
+	if (ret == WAIT_TIMEOUT) {
+		WARN_LOG << L"WaitForSingleObject(m_processInfo.hProcess - timeout";
+	}
+
+	if (!m_threadCancel.load()) {	// 手動キャンセル時に呼ぶとフリーズする
+		m_stdoutCallback("[_IOThreadMain] Killing the server");
+	}
 
 	DWORD dwExitCode = 0;
 	GetExitCodeProcess(m_processInfo.hProcess, &dwExitCode);

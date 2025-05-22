@@ -46,7 +46,6 @@ private:
 
 	std::thread	m_processThread;
 	std::atomic_bool	m_threadCancel = false;
-	CHandle	m_stdoutWrite;
 	std::function<void (const std::string&)> m_stdoutCallback;
 };
 
