@@ -12,7 +12,7 @@
 https://github.com/amate/scrsndcpy/releases/latest
 
 ## ■動作環境
-・Windows10 home 64bit バージョン 20H2  
+・Windows11 home 64bit バージョン 24H2  
 ※64bit版でしか動作しません
 
 ・音声のミラーリングにはAndroid 10以降が必要です
@@ -105,7 +105,7 @@ icon
 http://iconhoihoi.oops.jp/
 
 ## ■How to build
-実行ファイルの生成には、Visual Studio 2019が必要です  
+実行ファイルの生成には、Visual Studio 2022が必要です  
 
 事前にboostをビルドして、パスを通しておいてください
 
@@ -131,11 +131,11 @@ https://github.com/microsoft/vcpkg/archive/refs/tags/2021.04.30.zip
 
 と表示されたら成功です
 
-Visual Studio 2019で "scrsndcpy.sln"を開き、  
+Visual Studio 2022で "scrsndcpy.sln"を開き、  
 デバッグ->デバッグの開始 を実行すれば、vcpkgがライブラリの準備をした後、実行ファイルが生成されます
 
 ## ■著作権表示
-Copyright (C) 2021-2024 amate
+Copyright (C) 2021-2025 amate
 
 自分が書いた部分のソースコードは、MIT Licenseとします
 
@@ -151,6 +151,7 @@ v1.9
 ・[add] 同一フォルダ内に "デバイスのserial名.txt"が存在するときに、txtに書かれた adbコマンドを実行するようにした
 ・[fix] scrcpyのウィンドウを閉じたり、スリープから復帰したときに、scrsndcpyがフリーズするバグを修正
 ・[misc] display-buffer が video-buffer に変更になったので修正
+・[misc] ダイアログの文章を修正
 
 v1.5
 ・[update] scrcpyを v2.4に更新

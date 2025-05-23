@@ -30,7 +30,7 @@ CAPTION "About"
 FONT 9, "Segoe UI", 0, 0, 0x0
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,130,81,50,14
-    CTEXT           "scrsndcpy Application %APP_VERSION%\n\n(c) Copyright 2021-2023 amate",IDC_STATIC_ABOUT_TEXT,7,57,113,32
+    CTEXT           "scrsndcpy Application %APP_VERSION%\n\n(c) Copyright 2021-2025 amate",IDC_STATIC_ABOUT_TEXT,7,57,113,32
     ICON            IDR_MAINFRAME,IDC_STATIC,55,26,20,20
     GROUPBOX        "",IDC_STATIC,7,7,115,88
 END
@@ -103,9 +103,8 @@ BEGIN
     CONTROL         "スリープからの復帰時に自動的にデバイスへ再接続する",IDC_CHECK_RECONNECT_ON_RESUME,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,11,51,184,12
     GROUPBOX        "音声の出力方法",IDC_STATIC,212,67,195,46
-    CONTROL         "scrcpy内臓方式(※デバイスから音は出なくなります)",IDC_RADIO_AUDIO_SCRCPY,
-                    "Button",BS_AUTORADIOBUTTON | WS_GROUP,223,80,175,12
-    CONTROL         "sndcpyを別途実行",IDC_RADIO_AUDIO_SNDCPY,"Button",BS_AUTORADIOBUTTON,223,95,85,12
+    CONTROL         "scrcpy内臓方式",IDC_RADIO_AUDIO_SCRCPY,"Button",BS_AUTORADIOBUTTON | WS_GROUP,223,80,175,12
+    CONTROL         "sndcpyを別途実行",IDC_RADIO_AUDIO_SNDCPY,"Button",BS_AUTORADIOBUTTON,223,95,180,12
     CONTROL         "デバイス側で物理的なHIDキーボードをシミュレートします",IDC_CHECK_ENABLE_UHID,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,211,11,188,12
     LTEXT           "※デバイス側で物理キーボードのレイアウト設定が必要です\n設定ページの開き方\n1：""My device""ウィンドウをアクティブにして Alt+Kキー\n2：デバイスの設定→システム→言語と入力→物理デバイス",IDC_STATIC,220,24,188,37

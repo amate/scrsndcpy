@@ -140,7 +140,7 @@ void ProcessIO::_IOThreadMain()
 
 	INFO_LOG << L"_IOThreadMain - " << L" hProcess: " << m_processInfo.hProcess << L" - process finish - dwExitCode : " << dwExitCode;
 
-	if (!m_threadCancel) {
+	if (!m_threadCancel.load()) {
 		INFO_LOG << L"_IOThreadMain - " << L" hProcess: " << m_processInfo.hProcess << L" - !m_threadCancel - normal finish";
 		m_processThread.detach();
 	}
